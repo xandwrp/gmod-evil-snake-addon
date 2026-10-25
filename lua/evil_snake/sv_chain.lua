@@ -81,6 +81,30 @@ local ESCAPE = {
 
 local folds = {}
 
+local function Size(c)
+	local r = Setting("radius") * c.girth * HULL
+	local body, tail = EvilSnake.Shape()
+	local n = #c.x
+	for i = 1, n do
+		local h = r * math.max(EvilSnake.Profile((i - 1) / math.max(n - 1, 1), body, tail), TIP)
+		if c.squeeze > 0 then h = Lerp(c.squeeze, h, math.min(h, SQUEEZE_HULL)) end
+		local grow = h - (c.hull[i] or h)
+		if grow > 0 then
+			local normal = c.cn[i]
+			local lift = UP * grow
+			if normal then
+				local reach = math.abs(normal.x) + math.abs(normal.y) + math.abs(normal.z)
+				lift = normal.z >= 0.3 and UP * (grow * reach / normal.z) or normal * (grow * reach)
+				c.cd[i] = c.cd[i] + grow * reach
+			end
+			c.x[i] = c.x[i] + lift
+			c.old[i] = c.old[i] + lift
+		end
+		c.hull[i] = h
+	end
+	for i = n + 1, #c.hull do c.hull[i] = nil end
+end
+
 function Chain.New(joints, filter)
 	local c = {
 		x = {}, old = {}, p = {}, cn = {}, cd = {}, filter = filter, awake = true, still = 0, acc = 0, nap = 0,
@@ -90,6 +114,7 @@ function Chain.New(joints, filter)
 	}
 	c.trace = { mins = c.mins, maxs = c.maxs, mask = MASK_SOLID, filter = filter }
 	for i, j in ipairs(joints) do c.x[i], c.old[i] = Vector(j), Vector(j) end
+	Size(c)
 	return c
 end
 
@@ -123,30 +148,6 @@ local function Hull(c, i, from, to)
 	local q = c.trace
 	q.start, q.endpos = from, to
 	return util.TraceHull(q)
-end
-
-local function Size(c)
-	local r = Setting("radius") * c.girth * HULL
-	local body, tail = EvilSnake.Shape()
-	local n = #c.x
-	for i = 1, n do
-		local h = r * math.max(EvilSnake.Profile((i - 1) / math.max(n - 1, 1), body, tail), TIP)
-		if c.squeeze > 0 then h = Lerp(c.squeeze, h, math.min(h, SQUEEZE_HULL)) end
-		local grow = h - (c.hull[i] or h)
-		if grow > 0 then
-			local normal = c.cn[i]
-			local lift = UP * grow
-			if normal then
-				local reach = math.abs(normal.x) + math.abs(normal.y) + math.abs(normal.z)
-				lift = normal.z >= 0.3 and UP * (grow * reach / normal.z) or normal * (grow * reach)
-				c.cd[i] = c.cd[i] + grow * reach
-			end
-			c.x[i] = c.x[i] + lift
-			c.old[i] = c.old[i] + lift
-		end
-		c.hull[i] = h
-	end
-	for i = n + 1, #c.hull do c.hull[i] = nil end
 end
 
 function Chain.Link(c)
