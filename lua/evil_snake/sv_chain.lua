@@ -409,7 +409,7 @@ local function Collide(c, i, from, to, along, gravity)
 	if tr.StartSolid then
 		local free = Unstick(c, i, to) or Unstick(c, i, from) or from
 		Contact(c, i, free)
-		return free
+		return free, false, free ~= to
 	end
 	local final, climbed, hit = to, false, nil
 	if tr.Hit then
@@ -845,6 +845,7 @@ local function Tick(c)
 	local was = cn[1]
 	for i = 1, n do
 		local to, climbed, snapped
+		local from = x[i]
 		if i == g then
 			to = Vector(c.pinnedAt)
 			cn[i], cd[i] = nil, nil
@@ -852,8 +853,8 @@ local function Tick(c)
 			local along = (p[math.min(i + 1, n)] - p[math.max(i - 1, 1)]):GetNormalized()
 			to, climbed, snapped = Collide(c, i, x[i], p[i], along, gravity)
 		end
-		old[i], x[i] = snapped and Vector(to) or climbed and Vector(x[i].x, x[i].y, to.z) or x[i], to
-		moved = math.max(moved, to:DistToSqr(old[i]))
+		old[i], x[i] = snapped and Vector(to) or climbed and Vector(from.x, from.y, to.z) or from, to
+		moved = math.max(moved, to:DistToSqr(from))
 		if cn[i] then slid = slid + math.sqrt((to.x - old[i].x) ^ 2 + (to.y - old[i].y) ^ 2) end
 	end
 	if c.climb < 0 and was and cn[1] and was.z < FLOOR and was.z > -FLOOR and cn[1].z >= FLOOR then Land(c, was) end
