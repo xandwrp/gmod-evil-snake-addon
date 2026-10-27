@@ -588,7 +588,8 @@ function ENT:EvilPose(victim)
 	local depth = EvilSnake.Hold((CurTime() - held.at) * held.pace, held.hold)
 	local up = self.Chain.up
 	local head, neck = EvilSnake.HeadPoints(x[1], x[2], self:Radius(), up)
-	local pos, ang = EvilSnake.HeldPlace(head, neck, victim:OBBMaxs().z * depth, up)
+	local height = victim:OBBMaxs().z
+	local pos, ang = EvilSnake.HeldPlace(head, neck, height * depth, up, height)
 	return pos, ang
 end
 

@@ -94,12 +94,12 @@ function EvilSnake.Gape(head, neck, surface)
 	return f, up
 end
 
-function EvilSnake.HeldPlace(head, neck, depth, surface)
+function EvilSnake.HeldPlace(head, neck, depth, surface, length)
 	local f, up = EvilSnake.Gape(head, neck, surface)
 	local fwd = UP - up * UP:Dot(up)
 	if fwd:LengthSqr() < 1e-4 then fwd = -f end
 	fwd:Normalize()
-	return head - up * depth, fwd:AngleEx(up), up, head
+	return head + up * (length - depth), fwd:AngleEx(-up), up, head
 end
 
 EvilSnake.TONGUE_IN, EvilSnake.TONGUE_OUT, EvilSnake.TONGUE_WRAP, EvilSnake.TONGUE_BACK = 0, 1, 2, 3
