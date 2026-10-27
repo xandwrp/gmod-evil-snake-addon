@@ -128,6 +128,9 @@ local TRACK_EVERY = 1
 local TRACK_SPAN = 4
 local LOITER_TRAVEL = 200
 local LOITER_SHARE = 0.2
+local GIVE_UP = 8
+local CLOSER = 32
+local SHUN = 15
 
 local HANDLE_RESIZE = 1
 local GRIP_SNAP = 8
@@ -170,6 +173,7 @@ function ENT:Initialize()
 	self.Stomach = EvilSnake.Stomach.New(self)
 	self.Stomach.onDigest = function(v) self:Absorb(v) end
 	self.Mind = EvilSnake.Brain.New()
+	self.Shun = setmetatable({}, { __mode = "k" })
 	self.Tongue = EvilSnake.Tongue.New()
 	self.Hitbox = Evil.Hitbox(self)
 	self.Born = CurTime()
@@ -431,16 +435,42 @@ function ENT:Appeal(ent, from, d)
 	return score
 end
 
+function ENT:Overhead(ent, head)
+	local c = self.Chain
+	if c.fly or c.walls > 0 and c.ceilings > 0 or EvilSnake.Kind(ent) ~= "barnacle" then return false end
+	local low = ent:WorldSpaceAABB()
+	return low.z > head.z + self:Radius() * 2 + Setting("bite_reach") * self.Sharp.reach
+end
+
+function ENT:Shuns(ent, head, now)
+	return now < (self.Shun[ent] or 0) or self:Overhead(ent, head)
+end
+
+function ENT:Stalled(prey, head, now)
+	local d = head:Distance(prey:WorldSpaceCenter())
+	local at = prey:GetPos()
+	local chase = self.Chase
+	if not chase or chase.prey ~= prey or now - chase.last > DECIDE * 2 or d < chase.best - CLOSER or at:DistToSqr(chase.at) > CLOSER * CLOSER then
+		chase = { prey = prey, best = d, at = at, since = now }
+		self.Chase = chase
+	end
+	chase.last = now
+	if now - chase.since < GIVE_UP then return false end
+	self.Shun[prey], self.Chase = now + SHUN, nil
+	return true
+end
+
 function ENT:FindPrey(from, current)
 	local sight, s = Setting("sight_range"), self.Sharp
 	local now = CurTime()
 	local best, bestScore
+	if current and self:Shuns(current, from, now) then current = nil end
 	if current then
 		local d = from:Distance(current:WorldSpaceCenter())
 		if d <= self:Keeps() then best, bestScore = current, self:Appeal(current, from, d) * STAY end
 	end
 	for _, ent in ipairs(ents.FindInSphere(from, self:Noticed())) do
-		if ent ~= current and Edible(ent, self) then
+		if ent ~= current and Edible(ent, self) and not self:Shuns(ent, from, now) then
 			local d = from:Distance(ent:WorldSpaceCenter())
 			local reach = sight
 			if now - (ent.EvilSnakeShot or -math.huge) < HEARD then reach = sight * s.hear end
@@ -1321,6 +1351,7 @@ function ENT:Decide(now)
 	local old = self.Prey
 	local edible = Edible(old, self)
 	local prey = self:FindPrey(head, edible and old or nil)
+	if prey and self:Stalled(prey, head, now) then prey = self:FindPrey(head) end
 	if edible and prey ~= old and head:Distance(old:WorldSpaceCenter()) > self:Keeps() then
 		EvilSnake.Watch(old, self:Above(old, head) and "climbed" or "outran")
 	end
