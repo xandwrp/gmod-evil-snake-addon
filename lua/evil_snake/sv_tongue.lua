@@ -55,7 +55,7 @@ local function Say(snake, path, pitch, at)
 end
 
 local function Lickable(ent, snake)
-	return EvilSnake.Edible(ent, snake) and util.IsValidRagdoll(ent:GetModel() or "")
+	return EvilSnake.Edible(ent, snake) and not ent:IsNextBot() and util.IsValidRagdoll(ent:GetModel() or "")
 end
 
 local function Gripped(rag)

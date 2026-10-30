@@ -392,10 +392,12 @@ function EvilSnake.Full(snake)
 end
 
 function EvilSnake.Edible(ent, snake)
-	if not IsValid(ent) or not (ent:IsPlayer() or ent:IsNPC()) or CurTime() < (ent.EvilSnakeFree or 0) or ent.EvilCrawlerVictim or not Evil.Claimable(ent, snake) then return false end
+	if not IsValid(ent) or not (ent:IsPlayer() or ent:IsNPC() or ent:IsNextBot()) or CurTime() < (ent.EvilSnakeFree or 0) or ent.EvilCrawlerVictim or not Evil.Claimable(ent, snake) then return false end
 	if EvilSnake.Full(snake) then return false end
 	if ent:IsPlayer() then return Setting("hunt_players") ~= 0 and ent:Alive() and not ent:HasGodMode() and not Unseen(ent) end
-	return Setting("hunt_npcs") ~= 0 and ent:IsNPC() and ent:GetClass() ~= "npc_bullseye" and not ent.EvilBarnacle and ent:Health() > 0 and not ent.EvilFungusAsleep
+	if Setting("hunt_npcs") == 0 or ent.EvilBarnacle or ent.EvilFungusAsleep then return false end
+	if ent:IsNextBot() then return ent:Health() > 0 or ent:GetMaxHealth() <= 0 end
+	return ent:GetClass() ~= "npc_bullseye" and ent:Health() > 0
 end
 
 local Edible = EvilSnake.Edible
@@ -416,6 +418,7 @@ function ENT:Noticed()
 end
 
 local function Airborne(ent)
+	if ent:IsNextBot() then return ent.loco ~= nil and not ent.loco:IsOnGround() end
 	return ent:GetMoveType() == MOVETYPE_NOCLIP or not ent:IsOnGround() and ent:WaterLevel() < 2
 end
 
@@ -992,7 +995,7 @@ local Reaches = EvilSnake.Reaches
 
 function EvilSnake.Clear(snake, from, ent, near)
 	local filter = function(e)
-		return e ~= snake and e ~= ent and not e.EvilHitboxOwner and not e.EvilSnakeRide and not e:IsPlayer() and not e:IsNPC() and e:GetClass() ~= "evil_snake"
+		return e ~= snake and e ~= ent and not e.EvilHitboxOwner and not e.EvilSnakeRide and not e:IsPlayer() and not e:IsNPC() and not e:IsNextBot() and e:GetClass() ~= "evil_snake"
 	end
 	local center = ent:WorldSpaceCenter()
 	if not util.TraceLine({ start = from, endpos = center, mask = MASK_SOLID, filter = filter }).Hit then return true end
