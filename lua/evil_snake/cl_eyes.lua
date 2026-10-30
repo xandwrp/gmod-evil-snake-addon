@@ -193,7 +193,9 @@ function Eyes.Draw(state, light, stalks, head, W, look, cr, cg, cb)
 			e = { vel = Vector(), next = 0, k = 1 + (i - 1.5) * 0.3, jit = Vector() }
 			state[i] = e
 		end
-		Simulate(e, s.base, s.up, Want(e, s.base, now, look, head), L, dt)
+		if state.dead then e.alert = false end
+		local want = state.dead and s.base + head.f * 100 - head.u * 150 or Want(e, s.base, now, look, head)
+		Simulate(e, s.base, s.up, want, L, dt)
 		local tan = Stalk(s.base, s.up, e.tip, s.side, W, cr * 0.9, cg * 0.9, cb * 0.9)
 		Ball(e.tip + tan * (W * BALL * 0.6), e.look, W * BALL)
 	end

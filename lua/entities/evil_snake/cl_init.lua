@@ -237,6 +237,7 @@ function ENT:Think()
 	local target = held and held.ent or self:GetPrey()
 	local dead = self:GetDead()
 	self.Body.dim = dead and DEAD_DIM or nil
+	self.Body.eyes.dead = dead
 	self.Body.look = not dead and (not held and EvilSnake.Tongue.Look(tongue)
 		or IsValid(target) and (target.EyePos and target:EyePos() or target:WorldSpaceCenter())) or nil
 	local mins, maxs = EvilSnake.Body.Bounds(pose, fattest, r)
