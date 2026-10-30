@@ -154,7 +154,7 @@ local function Shell()
 	Quads(SHELL + 1, K)
 end
 
-local tx, ty, tz, th = {}, {}, {}, {}
+local tx, ty, th = {}, {}, {}
 local teeth = 0
 
 local function Tooth(x, y, h)

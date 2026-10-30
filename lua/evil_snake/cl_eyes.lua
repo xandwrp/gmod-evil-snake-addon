@@ -2,7 +2,7 @@ EvilSnake = EvilSnake or {}
 local Eyes = {}
 EvilSnake.Eyes = Eyes
 
-local sqrt, sin, cos, min, max, exp = math.sqrt, math.sin, math.cos, math.min, math.max, math.exp
+local sqrt, sin, cos, min, exp = math.sqrt, math.sin, math.cos, math.min, math.exp
 
 local STALK = 1.05
 local STALK_R = 0.1
