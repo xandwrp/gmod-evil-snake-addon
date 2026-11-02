@@ -13,6 +13,7 @@ local KEY_BG = Color(10, 8, 9, 200)
 local BAR_BG = Color(255, 255, 255, 25)
 
 local blob, focus, lastOrigin, lastAngles, lastTime
+local View = Evil and Evil.View or function(name, _, calc) hook.Add("CalcView", name, calc) end
 
 function EvilSnake.Inside(pos, back)
 	blob = { pos = pos, back = BACK + back, seen = RealTime() }
@@ -22,8 +23,16 @@ hook.Add("RenderScene", "EvilSnakeInside", function(origin, angles)
 	lastOrigin, lastAngles = origin, angles
 end)
 
-hook.Add("CalcView", "EvilSnakeInside", function(ply, _, angles, fov)
-	if ply:Alive() or not ply:GetNW2Bool("EvilSnakeInside") then
+local function Inside(ply)
+	return not ply:Alive() and ply:GetNW2Bool("EvilSnakeInside")
+end
+
+local function Leave()
+	focus = nil
+end
+
+View("EvilSnakeInside", Inside, function(ply, _, angles, fov)
+	if not Inside(ply) then
 		focus = nil
 		return
 	end
@@ -46,7 +55,7 @@ hook.Add("CalcView", "EvilSnakeInside", function(ply, _, angles, fov)
 		mins = -HULL, maxs = HULL, mask = MASK_SOLID_BRUSHONLY,
 	})
 	return { origin = tr.HitPos, angles = angles, fov = fov, drawviewer = false }
-end)
+end, Leave)
 
 hook.Add("HUDPaint", "EvilSnakeInside", function()
 	local ply = LocalPlayer()
