@@ -69,11 +69,9 @@ local TIGHT_CHECKS = 16
 local TIGHT_LOOK = 2
 local TIGHT_GAIN = 0.25
 local TIGHT_MASK = bit.band(MASK_SOLID, bit.bnot(CONTENTS_MONSTER))
-local TORN_EVERY = 0.5
-local TORN_TIME = 4
-local TORN_REACH = { 1, 0.6, 0.35 }
-local TORN_AGAIN = 2
-local TORN_BUDGET = 40
+local SEVER_EVERY = 0.25
+local SEVER_STRETCH = 1.3
+local SEVER_TIME = 1.5
 local PIVOT = 20
 local PREFER = 0.35
 local CALM_LOOK = 4
@@ -156,7 +154,7 @@ local function Hull(c, i, from, to)
 end
 
 function Chain.Link(c)
-	return Setting("segment_length") * c.stretch
+	return Setting("segment_length") * c.stretch * (c.scale or 1)
 end
 
 function Chain.HeadYaw(c)
@@ -374,67 +372,48 @@ local function Unstick(c, i, pos)
 	return best
 end
 
-local function Torn(c, i)
-	local tr = util.TraceLine({ start = c.x[i - 1], endpos = c.x[i], mask = MASK_SOLID, filter = c.filter })
-	return tr.Hit and not tr.StartSolid and tr.Fraction < 0.98 and math.abs(tr.HitNormal.z) < FLOOR
-end
-
--- seconds a wall has kept a link split, so a body that cannot be squeezed
--- through gets cut free instead of sitting there for good
-local function Wedged(c, dt)
-	local torn = 0
-	for i = 2, #c.x do
-		if not (c.pinned and i == c.pinned) and Torn(c, i) then torn = torn + 1 end
-	end
-	if torn > 0 then
-		c.wedge = (c.wedge or 0) + dt
-	else
-		c.wedge = math.max(0, (c.wedge or 0) - dt * 3)
-	end
-	return (c.wedge or 0) >= TORN_TIME
-end
-
--- a free spot one reach away for a torn joint, angled toward where it was going
-local function Place(c, i, from, want)
-	local link, best, bestScore = Chain.Link(c), nil, nil
-	for _, reach in ipairs(TORN_REACH) do
-		for _, dir in ipairs(ESCAPE) do
-			local to = from + dir * (link * reach)
-			if not Hull(c, i, to, to).StartSolid then
-				local score = (Hull(c, i, from, to).Hit and 0 or 2) + (want and dir:Dot(want) or 0) + reach
-				if not bestScore or score > bestScore then best, bestScore = to, score end
-			end
+-- the first link with a solid through it, like a door that shut across the
+-- body. links only get traced while one of them is pulled well past its
+-- length, so a resting body or a thin tail draped over a ledge costs nothing
+-- and never counts
+local function Severed(c)
+	local x = c.x
+	local n = #x
+	local far = (Chain.Link(c) * SEVER_STRETCH) ^ 2
+	local torn = false
+	for i = 2, n do
+		if x[i]:DistToSqr(x[i - 1]) > far then
+			torn = true
+			break
 		end
 	end
-	return best
+	if not torn then return end
+	local q = { mask = TIGHT_MASK, filter = c.filter }
+	for i = 2, n do
+		q.start, q.endpos = x[i - 1], x[i]
+		local tr = util.TraceLine(q)
+		if tr.Hit and not tr.StartSolid then return i end
+	end
 end
 
--- last resort: put every torn joint back beside the joint ahead of it, so the
--- far side of the wall comes through instead of leaving the snake wedged
-function Chain.Cut(c)
-	if (c.wedge or 0) < TORN_TIME then return false end
+-- pulls everything behind a cut link through to the head's side, laid out
+-- behind the last joint still on it the same way a fresh snake is laid out
+local function Rejoin(c, i)
 	local x, old, cn, cd = c.x, c.old, c.cn, c.cd
-	local moved, spent = false, 0
-	for i = 2, #x do
-		if spent >= TORN_BUDGET then break end
-		if c.pinned and i == c.pinned then break end
-		if Torn(c, i) or Hull(c, i, x[i], x[i]).StartSolid then
-			spent = spent + 1
-			local want = x[i] - x[i - 1]
-			want = want:LengthSqr() > 1e-4 and want:GetNormalized() or nil
-			local to = Place(c, i, x[i - 1], want)
-			if to then
-				x[i], old[i], cn[i], cd[i] = to, Vector(to), nil, nil
-				moved = true
-			end
-		end
+	local n = #x
+	local yaw = Chain.HeadYaw(c)
+	if i > 2 then
+		local d = x[i - 2] - x[i - 1]
+		yaw = math.deg(math.atan2(d.y, d.x))
 	end
-	if moved then
-		c.awake, c.still = true, 0
-		Chain.Ghost(c, GHOST_TIME)
-		Reseed(c)
+	local lift = Setting("radius") * c.girth
+	local laid = EvilSnake.Trail({ Vector(x[i - 1]) }, yaw, n - i + 1, Chain.Link(c), lift, c.filter)
+	for k = i, n do
+		local to = laid[k - i + 2]
+		x[k], old[k], cn[k], cd[k] = to, Vector(to), nil, nil
 	end
-	return moved
+	Chain.Ghost(c, GHOST_TIME)
+	Reseed(c)
 end
 
 local function Climb(c, i, from, to, reached)
@@ -990,20 +969,22 @@ local function Calm(c)
 end
 
 function Chain.Update(c, dt)
-	c.wedgeAt = (c.wedgeAt or 0) - dt
-	c.cutAt = (c.cutAt or 0) - dt
-	if c.wedgeAt <= 0 then
-		c.wedgeAt = TORN_EVERY
-		if c.cutAt <= 0 and Wedged(c, TORN_EVERY) then
-			c.cutAt = Chain.Cut(c) and TORN_EVERY or TORN_AGAIN
-		end
-	end
 	if c.awake then
 		c.tight = (c.tight or 0) - dt
 		if c.tight <= 0 then
 			c.tight = TIGHT_EVERY
 			if Tight(c) then Chain.Squeeze(c, TIGHT_HOLD) end
 			c.calm = Calm(c)
+		end
+		c.severAt = (c.severAt or 0) - dt
+		if c.severAt <= 0 then
+			c.severAt = SEVER_EVERY
+			local cut = not c.pinned and Severed(c)
+			c.severed = cut and (c.severed or 0) + SEVER_EVERY or 0
+			if cut and c.severed >= SEVER_TIME then
+				c.severed = 0
+				Rejoin(c, cut)
+			end
 		end
 	end
 	if c.squeezing > 0 then c.squeezing = math.max(0, c.squeezing - dt) end
