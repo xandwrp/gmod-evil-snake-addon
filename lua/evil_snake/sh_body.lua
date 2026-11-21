@@ -8,25 +8,110 @@ EvilSnake.HULL = 0.85
 
 local STEP = 24
 local DROP = 120
+local TURN = 30
+local TURNS = 6
+local BOXED = 0.9
 
-function EvilSnake.Layout(origin, yaw, count, filter)
-	local link = EvilSnake.Setting("segment_length")
-	local fwd = Angle(0, yaw, 0):Forward()
-	local lift = Vector(0, 0, EvilSnake.Setting("radius"))
-	local joints = {}
-	local z = origin.z
-	for i = 0, count do
-		local p = origin - fwd * (i * link)
-		local tr = util.TraceLine({
-			start = Vector(p.x, p.y, z + STEP),
-			endpos = Vector(p.x, p.y, z - DROP),
-			mask = MASK_SOLID,
-			filter = filter,
-		})
-		if tr.Hit and not tr.StartSolid then z = tr.HitPos.z end
-		joints[i + 1] = Vector(p.x, p.y, z) + lift
+-- floor height under a point, keeping the last one when there is none
+local function Floor(x, y, z, filter)
+	local tr = util.TraceLine({
+		start = Vector(x, y, z + STEP),
+		endpos = Vector(x, y, z - DROP),
+		mask = MASK_SOLID,
+		filter = filter,
+	})
+	if tr.Hit and not tr.StartSolid then return tr.HitPos.z end
+	return z
+end
+
+-- adds count joints behind the last one in joints, tracing each joint from
+-- the one before and turning away from walls so no link goes through a solid.
+-- once it picks a side it keeps turning that way so the body curls along the
+-- wall instead of zigzagging. yaw is the way the body faces, toward the head
+function EvilSnake.Trail(joints, yaw, count, link, lift, filter)
+	local z = joints[#joints].z - lift
+	local side = 1
+	for _ = 1, count do
+		local prev = joints[#joints]
+		local placed, bestFrac, bestTo, bestZ, bestTurn
+		for k = 0, TURNS * 2 do
+			local turn = k == 0 and 0 or math.ceil(k / 2) * TURN * (k % 2 == 1 and side or -side)
+			local to = prev - Angle(0, yaw + turn, 0):Forward() * link
+			local tz = Floor(to.x, to.y, z, filter)
+			-- trace level with the higher end so stepping up a stair is not a wall
+			local h = math.max(prev.z, tz + lift)
+			local tr = util.TraceLine({
+				start = Vector(prev.x, prev.y, h),
+				endpos = Vector(to.x, to.y, h),
+				mask = MASK_SOLID,
+				filter = filter,
+			})
+			if not tr.Hit then
+				if turn ~= 0 then side = turn > 0 and 1 or -1 end
+				yaw, z, placed = yaw + turn, tz, Vector(to.x, to.y, tz + lift)
+				break
+			end
+			if not bestFrac or tr.Fraction > bestFrac then
+				bestFrac, bestTo, bestZ, bestTurn = tr.Fraction, to, tz, turn
+			end
+		end
+		-- boxed in on every side: go as far as the roomiest way allows and let
+		-- the chain stretch it out once it starts moving
+		if not placed then
+			local p = LerpVector(bestFrac * BOXED, prev, bestTo)
+			yaw = yaw + bestTurn
+			if bestFrac > 0 then z = bestZ end
+			placed = Vector(p.x, p.y, z + lift)
+		end
+		joints[#joints + 1] = placed
 	end
 	return joints
+end
+
+-- a body curled up flat around origin, the tail in the middle and the head on the outside,
+-- the way a snake lies in its egg. nil when the floor there is too cramped or uneven for it
+local COIL_GAP = 2.1 -- space between the turns, in body radii
+function EvilSnake.Coil(origin, yaw, count, link, lift, filter)
+	local gap = lift * COIL_GAP
+	local spin = gap / (math.pi * 2)
+	local z = Floor(origin.x, origin.y, origin.z, filter)
+	local pts, a = {}, 0
+	for i = 0, count do
+		local r = gap * 0.6 + spin * a
+		local dir = Angle(0, yaw + math.deg(a), 0):Forward()
+		local x, y = origin.x + dir.x * r, origin.y + dir.y * r
+		pts[i + 1] = Vector(x, y, Floor(x, y, z, filter) + lift)
+		a = a + link / r
+	end
+	for i = 2, #pts do
+		local p, q = pts[i - 1], pts[i]
+		if math.abs(p.z - q.z) > lift then return end
+		local h = math.max(p.z, q.z)
+		local tr = util.TraceLine({
+			start = Vector(p.x, p.y, h), endpos = Vector(q.x, q.y, h),
+			mask = MASK_SOLID, filter = filter,
+		})
+		if tr.Hit then return end
+	end
+	-- the chain runs head first
+	local joints = {}
+	for i = #pts, 1, -1 do joints[#joints + 1] = pts[i] end
+	return joints
+end
+
+-- lays a fresh body out behind the head, scale times the usual size. coiled tries to curl
+-- it up around origin first, and lays it out straight when there is no room for that
+function EvilSnake.Layout(origin, yaw, count, filter, scale, coiled)
+	scale = scale or 1
+	local lift = EvilSnake.Setting("radius") * scale
+	local link = EvilSnake.Setting("segment_length") * scale
+	if coiled then
+		local joints = EvilSnake.Coil(origin, yaw, count, link, lift, filter)
+		if joints then return joints end
+	end
+	local z = Floor(origin.x, origin.y, origin.z, filter)
+	local joints = { Vector(origin.x, origin.y, z + lift) }
+	return EvilSnake.Trail(joints, yaw, count, link, lift, filter)
 end
 
 function EvilSnake.Shape()

@@ -200,7 +200,7 @@ function ENT:Think()
 	local up = LerpVector(u, snap.up, later.up)
 	up:Normalize()
 	self.Up = up
-	self.Link = EvilSnake.Setting("segment_length") * math.max(self:GetLength(), 1) / math.max(#pose - 1, 1)
+	self.Link = EvilSnake.Setting("segment_length") * self:Scaled() * math.max(self:GetLength(), 1) / math.max(#pose - 1, 1)
 	local ahead = math.max(rt - snap.fed, 0) * EvilSnake.Setting("bulge_speed") * math.max(self:GetDigest(), 1) / self.Link
 	local bulges, fattest, mine = {}, 1, nil
 	local me = LocalPlayer()

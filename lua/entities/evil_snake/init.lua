@@ -4,6 +4,7 @@ include("shared.lua")
 if not EvilSnake then return end
 
 util.AddNetworkString("EvilSnakeBody")
+include("sv_eggs.lua")
 
 local Setting = EvilSnake.Setting
 
@@ -157,6 +158,8 @@ function ENT:Initialize()
 	self:SetCollisionGroup(COLLISION_GROUP_DEBRIS)
 	self:DrawShadow(false)
 	self:SetGirth(1)
+	-- EggScale is set by a broken egg for the small stillborn snake inside it.
+	self:SetBodyScale(self.EggScale or 1)
 	self:Bounds()
 	self.BaseSegments = math.Round(Setting("segments"))
 	self:SetLength(self.BaseSegments)
@@ -164,8 +167,15 @@ function ENT:Initialize()
 		return not e.EvilHitboxOwner and e ~= self and not e:IsPlayer() and not e:IsNPC() and not e:IsNextBot()
 			and e:GetClass() ~= "evil_snake" and not e.EvilDowned and not e.EvilSnakeRide
 	end
-	local joints = EvilSnake.Layout(self:GetPos(), self:GetAngles().y, self.BaseSegments, filter)
+	local scale = self:Scaled()
+	-- EggCoil is set by an egg: the snake starts curled up where the egg was.
+	local joints = EvilSnake.Layout(self:GetPos(), self:GetAngles().y, self.BaseSegments, filter, scale, self.EggCoil)
 	self.Chain = EvilSnake.Chain.New(joints, filter)
+	-- The chain's girth is its thickness against a normal snake, so a small snake starts thinner.
+	if scale ~= 1 then
+		self.Chain.scale = scale
+		EvilSnake.Chain.Swell(self.Chain, scale)
+	end
 	self:SetPos(joints[1])
 	self.LastThink = CurTime()
 	self.Dirty = true
@@ -502,9 +512,10 @@ function ENT:Grow()
 	local mass = st:Mass() + st:Eating(#self.Chain.x - 1)
 	self:SetLength(st:Length(self.BaseSegments, mass))
 	local girth = st:Girth(mass)
-	if math.abs(girth - self.Chain.girth) < 1e-3 then return end
+	local thick = girth * self:Scaled()
+	if math.abs(thick - self.Chain.girth) < 1e-3 then return end
 	self:SetGirth(girth)
-	EvilSnake.Chain.Swell(self.Chain, girth)
+	EvilSnake.Chain.Swell(self.Chain, thick)
 	self:Bounds()
 	if not self.Dead then self:Box() end
 	self.Dirty = true
@@ -517,6 +528,8 @@ function ENT:Absorb(v)
 	self:Toughen()
 	self:Steady()
 	self:Heal(self.Toughness * Setting("meal_heal"))
+	-- Someone fully digested: it carries an egg until it finds somewhere to lay it.
+	self.EggReady = true
 	hook.Run("EvilSnakeAbsorbed", self, v, lessons)
 end
 
@@ -974,9 +987,11 @@ function ENT:Die(dmg)
 		for i = 1, #c.x, GUTS do self:Bleed(c.x[i], 2) end
 		self:Cry(DIE)
 	end)
+	self.EggReady, self.EggGoal = nil, nil
 	local attacker, inflictor = dmg:GetAttacker(), dmg:GetInflictor()
-	hook.Run("EvilSnakeKilled", self, attacker, inflictor)
-	if Setting("npc_kill") ~= 0 then
+	-- A stillborn snake from a broken egg was never alive, so nobody gets a kill for it.
+	if not self.Stillborn then hook.Run("EvilSnakeKilled", self, attacker, inflictor) end
+	if Setting("npc_kill") ~= 0 and not self.Stillborn then
 		ProtectedCall(function() hook.Run("OnNPCKilled", self, attacker, inflictor) end)
 	end
 	SafeRemoveEntityDelayed(self, Setting("corpse_time"))
@@ -1389,6 +1404,9 @@ function ENT:Decide(now)
 		else
 			EvilSnake.Chain.Drive(c, math.deg(math.atan2(to.y, to.x)), Setting("hunt_speed") * self.Sharp.speed, aim)
 		end
+	elseif not prey and not c.fly and self:EggSeek(now, c, head) then
+		-- Crawling to a nest to lay the egg it carries; EggSeek did the driving.
+		return
 	elseif prey or Setting("wander") ~= 0 then
 		if now >= (self.NextWander or 0) then
 			self.WanderYaw = self.WanderYaw + math.Rand(-WANDER_TURN, WANDER_TURN)
