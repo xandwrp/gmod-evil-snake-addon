@@ -56,8 +56,8 @@ EvilSnake.SETTINGS = {
 	{ name = "eggs", default = 0, min = 0, max = 1, label = "Eggs",
 		help = "It lays an egg after digesting someone, which hatches into another snake. At 0 it never lays" },
 	{ name = "egg_cap", default = 10, min = 0, max = 100, decimals = 0, label = "Population cap",
-		help = "Most living snakes there can be before eggs stop hatching. Eggs that are due wait, "
-			.. "unhatched, until the count drops below this. At 0 there is no cap" },
+		help = "Most snakes and unhatched eggs there can be at once. At this count it stops laying, and "
+			.. "eggs that are already due wait unhatched until the count drops below it. At 0 there is no cap" },
 	{ name = "egg_time", default = 60, min = 1, max = 600, decimals = 0, label = "Egg gestation",
 		help = "Seconds an egg takes to hatch into a snake. A snake lays one somewhere secluded after it digests someone. "
 			.. "Eggs are physics props with 100 health: they can be knocked loose, picked up, thrown, and break when "
