@@ -50,21 +50,16 @@ local FEEDS = {
 	["models/gibs/hgibs_spine.mdl"] = true,
 }
 
--- An ellipsoid the size of the scaled melon. Model physics do not scale with SetModelScale, so it
--- gets its own convex hull, which also rolls like a melon where a box would tip end over end.
--- The points are scaled by the model scale again: a hull given the melon's already-scaled half-size came
--- out a third of that in the world (measured, 7.5 units of half-height instead of 23), which left the
--- collider 15 tall and the player stepping straight over it. Physics init reads the points as unscaled
--- model space and divides by the model scale.
+-- An ellipsoid the size of the scaled melon. The melon's own physics do not scale with SetModelScale,
+-- so the egg carries a hull of its own, which also rolls like a melon where a box would tip end over end.
 local function Hull()
-	local H = EGG_HALF * EGG_SCALE
-	local pts = { Vector(0, 0, H.z), Vector(0, 0, -H.z) }
+	local pts = { Vector(0, 0, EGG_HALF.z), Vector(0, 0, -EGG_HALF.z) }
 	for i = 1, HULL_RINGS do
 		local lat = math.pi * (i / (HULL_RINGS + 1) - 0.5)
 		local c, s = math.cos(lat), math.sin(lat)
 		for k = 0, HULL_SIDES - 1 do
 			local a = k / HULL_SIDES * math.pi * 2
-			pts[#pts + 1] = Vector(H.x * c * math.cos(a), H.y * c * math.sin(a), H.z * s)
+			pts[#pts + 1] = Vector(EGG_HALF.x * c * math.cos(a), EGG_HALF.y * c * math.sin(a), EGG_HALF.z * s)
 		end
 	end
 	return pts
@@ -72,17 +67,19 @@ end
 
 function ENT:Initialize()
 	self:SetModel(self.EGG_MODEL)
-	self:SetModelScale(self.EGG_SCALE, 0)
+	-- Physics first, then the model scale, as the crawler egg does. Points handed to PhysicsInitConvex are
+	-- taken as they are; creating the hull after SetModelScale left the egg colliding as the melon's
+	-- unscaled self (7.5 units of half-height measured in game), which is under the player's step height,
+	-- so players and shots passed it as if it were not there while physics props still hit it.
 	self:PhysicsInitConvex(Hull())
+	self:SetModelScale(self.EGG_SCALE, 0)
 	self:SetMoveType(MOVETYPE_VPHYSICS)
-	-- SOLID_VPHYSICS, the same solid type an ordinary prop uses: rays and player hulls then test against the
-	-- physics object itself. A box from SetCollisionBounds only counts for SOLID_BBOX, and this egg was being
-	-- skipped by player and physgun traces even with clean bounds, so it goes back to tracing the hull.
 	self:SetSolid(SOLID_VPHYSICS)
-	-- Setting the solid type puts FSOLID_CUSTOMRAYTEST and FSOLID_CUSTOMBOXTEST back on, and with those set the
-	-- engine asks the entity to run its own ray and box tests. A scripted entity runs none, so bullets and
-	-- players pass through while the physics object still collides. Clear them, and again on the next tick in
-	-- case the engine finishes the setup after Initialize returns.
+	self:SetCollisionBounds(-EGG_HALF, EGG_HALF)
+	-- SetSolid puts FSOLID_CUSTOMRAYTEST and FSOLID_CUSTOMBOXTEST back on, and with those set the engine asks
+	-- the entity to run its own ray and box tests. A scripted entity runs none, so it is skipped by bullets
+	-- and players while the physics object still collides. Clear them, and again on the next tick in case the
+	-- engine finishes the setup after Initialize returns.
 	self:SetSolidFlags(0)
 	timer.Simple(0, function()
 		if IsValid(self) then self:SetSolidFlags(0) end
