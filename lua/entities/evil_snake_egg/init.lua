@@ -37,7 +37,6 @@ local SPINE = "models/Gibs/HGIBS_spine.mdl"
 local ALWAYS = { SKULL, RIB, SPINE }
 local BONES = { RIB, RIB, SPINE, "models/Gibs/HGIBS_scapula.mdl" }
 local BONE_MIN, BONE_MAX = 1, 2 -- extra bones on top of ALWAYS
-local BONE_LIFE = 120 -- seconds a spilled bone stays before it is cleaned up
 
 -- A bone touching the egg feeds it: the egg draws it in and takes this many seconds off its gestation.
 local FEED = 30
@@ -69,11 +68,7 @@ function ENT:Initialize()
 	self:SetModel(self.EGG_MODEL)
 	self:SetModelScale(self.EGG_SCALE, 0)
 	self:PhysicsInitConvex(Hull())
-	-- Do not EnableCustomCollisions here. That sets FSOLID_CUSTOMRAYTEST and FSOLID_CUSTOMBOXTEST, which
-	-- tells the engine the entity runs its own ray and box tests; a plain Lua entity does not, so bullets
-	-- and player movement traces skip it entirely while the physics object still collides with the world.
-	-- That is why eggs could fall and land but never be shot or walked into. It is only meant for meshes
-	-- made with PhysicsFromMesh; a convex hull already gives proper traces on its own.
+	self:EnableCustomCollisions(true)
 	self:SetCollisionBounds(-EGG_HALF, EGG_HALF)
 	self:SetMoveType(MOVETYPE_VPHYSICS)
 	self:SetSolid(SOLID_VPHYSICS)
@@ -93,6 +88,9 @@ function ENT:Initialize()
 		if normal.z < GLUE_DOT then
 			self.Glued = true
 			phys:EnableMotion(false)
+			-- A frozen prop gets no collision callback from players walking into it, so it
+			-- notices touches through its bounds instead while it is stuck up.
+			self:SetTrigger(true)
 		else
 			phys:Wake()
 		end
@@ -121,12 +119,6 @@ function ENT:SpawnFunction(ply, tr, class)
 	ent.SpawnNormal = normal
 	ent:Spawn()
 	ent:Activate()
-	ent:SetOwner(ply)
-	ent.NoDuplicate = true
-	undo.Create("evil_snake_egg")
-	undo.AddEntity(ent)
-	undo.SetPlayer(ply)
-	ply:AddCleanup("props", ent)
 	return ent
 end
 
@@ -169,6 +161,7 @@ end
 function ENT:Unglue()
 	if not self.Glued then return end
 	self.Glued = false
+	self:SetTrigger(false)
 	local phys = self:GetPhysicsObject()
 	if IsValid(phys) then
 		phys:EnableMotion(true)
@@ -183,35 +176,14 @@ local function Snake(ent)
 	return ent.EvilHitboxOwner ~= nil or ent:GetClass() == "evil_snake"
 end
 
--- Stuck to a wall or ceiling the egg stays an ordinary solid prop: it blocks players and shots, and
--- a frozen prop gets no collision callback from either, so it looks for whatever is pressed against
--- it instead. It used to be a trigger to hear the bump, and that is exactly why players walked
--- through it and bullets passed through the shell without ever touching it.
-local REACH = 8
-local function Edible(ent)
-	local model = ent:GetModel()
-	return model ~= nil and FEEDS[string.lower(model)] == true
-end
-
-function ENT:Contact()
-	local c = self:WorldSpaceCenter()
-	for _, ent in ipairs(ents.FindInSphere(c, EGG_HALF.x + REACH)) do
-		if IsValid(ent) and ent ~= self and not ent:IsWorld() and ent:GetMoveType() ~= MOVETYPE_NONE
-			and ent:GetClass() ~= "evil_snake_egg" then
-			if Edible(ent) then
-				self:Feed(ent)
-			elseif not Snake(ent) then
-				-- Coming loose changes a frozen object's motion, which is best left out of the sweep.
-				timer.Simple(0, function() if IsValid(self) then self:Unglue() end end)
-				return
-			end
-		end
-	end
+-- Anything else bumping a stuck egg knocks it down.
+function ENT:StartTouch(ent)
+	if not self.Glued or not IsValid(ent) or Snake(ent) then return end
+	timer.Simple(0, function() if IsValid(self) then self:Unglue() end end)
 end
 
 function ENT:Think()
 	if not self.Broken and not self.Hatched and CurTime() >= self.HatchAt then self:Hatch() end
-	if self.Glued then self:Contact() end
 	self:NextThink(CurTime() + 0.25)
 	return true
 end
@@ -266,7 +238,6 @@ local function Bone(model, pos, vel)
 		phys:SetVelocity(vel)
 		phys:AddAngleVelocity(VectorRand() * 300)
 	end
-	SafeRemoveEntityDelayed(bone, BONE_LIFE)
 end
 
 -- What was growing inside: a small snake, already dead. Die() leaves it lying as a corpse and
@@ -351,11 +322,6 @@ function ENT:Hatch()
 	snake.EggCoil = true
 	snake:Spawn()
 	snake:Activate()
-	local owner = self:GetOwner()
-	if IsValid(owner) then
-		snake:SetOwner(owner)
-		owner:AddCleanup("npcs", snake)
-	end
 	self:EmitSound("npc/barnacle/barnacle_tongue_pull1.wav", 70, 85)
 	SafeRemoveEntity(self)
 end
