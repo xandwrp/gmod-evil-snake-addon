@@ -77,6 +77,10 @@ function ENT:Initialize()
 	self:SetCollisionBounds(-EGG_HALF, EGG_HALF)
 	self:SetMoveType(MOVETYPE_VPHYSICS)
 	self:SetSolid(SOLID_BBOX)
+	-- Setting the solid type puts the custom ray and box test flags back on, and with those set the engine
+	-- asks the entity to run its own trace tests; a scripted entity does not, so every bullet and player
+	-- sweep is skipped. Clear them last.
+	self:SetSolidFlags(0)
 	self:SetHealth(EGG_HEALTH)
 	self:SetMaxHealth(EGG_HEALTH)
 	self:SetSaveValue("m_takedamage", 2)
