@@ -81,6 +81,11 @@ function ENT:Initialize()
 	-- asks the entity to run its own trace tests; a scripted entity does not, so every bullet and player
 	-- sweep is skipped. Clear them last.
 	self:SetSolidFlags(0)
+	-- The engine finishes setting the entity up after Initialize returns and can put the flags back on then,
+	-- so clear them once more on the first tick, before anything has had a chance to change the solidity.
+	timer.Simple(0, function()
+		if IsValid(self) then self:SetSolidFlags(0) end
+	end)
 	self:SetHealth(EGG_HEALTH)
 	self:SetMaxHealth(EGG_HEALTH)
 	self:SetSaveValue("m_takedamage", 2)
