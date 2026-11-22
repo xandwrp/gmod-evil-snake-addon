@@ -89,9 +89,6 @@ function ENT:Initialize()
 		if normal.z < GLUE_DOT then
 			self.Glued = true
 			phys:EnableMotion(false)
-			-- A frozen prop gets no collision callback from players walking into it, so it
-			-- notices touches through its bounds instead while it is stuck up.
-			self:SetTrigger(true)
 		else
 			phys:Wake()
 		end
@@ -168,7 +165,6 @@ end
 function ENT:Unglue()
 	if not self.Glued then return end
 	self.Glued = false
-	self:SetTrigger(false)
 	local phys = self:GetPhysicsObject()
 	if IsValid(phys) then
 		phys:EnableMotion(true)
@@ -183,14 +179,35 @@ local function Snake(ent)
 	return ent.EvilHitboxOwner ~= nil or ent:GetClass() == "evil_snake"
 end
 
--- Anything else bumping a stuck egg knocks it down.
-function ENT:StartTouch(ent)
-	if not self.Glued or not IsValid(ent) or Snake(ent) then return end
-	timer.Simple(0, function() if IsValid(self) then self:Unglue() end end)
+-- Stuck to a wall or ceiling the egg stays an ordinary solid prop: it blocks players and shots, and
+-- a frozen prop gets no collision callback from either, so it looks for whatever is pressed against
+-- it instead. It used to be a trigger to hear the bump, and that is exactly why players walked
+-- through it and bullets passed through the shell without ever touching it.
+local REACH = 8
+local function Edible(ent)
+	local model = ent:GetModel()
+	return model ~= nil and FEEDS[string.lower(model)] == true
+end
+
+function ENT:Contact()
+	local c = self:WorldSpaceCenter()
+	for _, ent in ipairs(ents.FindInSphere(c, EGG_HALF.x + REACH)) do
+		if IsValid(ent) and ent ~= self and not ent:IsWorld() and ent:GetMoveType() ~= MOVETYPE_NONE
+			and ent:GetClass() ~= "evil_snake_egg" then
+			if Edible(ent) then
+				self:Feed(ent)
+			elseif not Snake(ent) then
+				-- Coming loose changes a frozen object's motion, which is best left out of the sweep.
+				timer.Simple(0, function() if IsValid(self) then self:Unglue() end end)
+				return
+			end
+		end
+	end
 end
 
 function ENT:Think()
 	if not self.Broken and not self.Hatched and CurTime() >= self.HatchAt then self:Hatch() end
+	if self.Glued then self:Contact() end
 	self:NextThink(CurTime() + 0.25)
 	return true
 end
