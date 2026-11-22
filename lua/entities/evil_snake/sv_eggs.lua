@@ -6,6 +6,16 @@
 
 local Setting = EvilSnake.Setting
 
+-- Eggs already in the world count against the cap too, so a pile of eggs cannot
+-- keep growing while hatching waits for room.
+local function Eggs()
+	local n = 0
+	for _, egg in ipairs(ents.FindByClass("evil_snake_egg")) do
+		if IsValid(egg) and not egg.Broken and not egg.Hatched then n = n + 1 end
+	end
+	return n
+end
+
 local EGG_THICK = 48     -- how thick the egg is; keep in step with ENT.EGG_THICK in evil_snake_egg/shared.lua
 -- Half its reach across the surface. The scaled melon is nearly round (about 46 by 54), so both
 -- axes are checked at the longer one rather than trusting which way the model's long side points.
@@ -75,13 +85,12 @@ local PASS_COLOR = Color(0, 255, 140)
 local FAIL_COLOR = Color(255, 90, 90)
 local NEST_COLOR = Color(0, 220, 255)
 
--- `developer 1` on its own is enough to see the checks; evil_snake_debug_eggs forces them on top of it.
+-- evil_snake_debug_eggs turns on the checks and their world drawings.
 local cv_debug = CreateConVar("evil_snake_debug_eggs", "0", 0, "Reports every egg-laying check with its numbers and thresholds. The world drawings need developer 1 on the client")
 
+-- Only the convar, so a server running with developer 1 does not fill the console with egg checks.
 local function Debug()
-	if cv_debug:GetBool() then return true end
-	local dev = GetConVar("developer")
-	return dev and dev:GetInt() >= 1 or false
+	return cv_debug:GetBool()
 end
 
 local function Say(ent, msg)
@@ -372,6 +381,9 @@ function ENT:EggNest()
 end
 
 function ENT:LayAt(at, normal)
+	if Setting("eggs") <= 0 then return false end
+	local cap = Setting("egg_cap")
+	if cap > 0 and EvilSnake.Population() + Eggs() >= cap then return false end
 	local ok, r = self:EggPlantable(at, normal)
 	if not ok then
 		if Debug() then Say(self, "refused at the last check") end
@@ -385,9 +397,13 @@ function ENT:LayAt(at, normal)
 	egg.SpawnNormal = normal
 	egg.Layer = self
 	egg:Spawn()
+	egg.NoDuplicate = true
+	local owner = self:GetOwner()
+	if IsValid(owner) then egg:SetOwner(owner) end
 	egg:Activate()
 	self.EggReady = false
 	self.EggGoal = nil
+	self.NestMiss = 0
 	self:EmitSound("physics/flesh/flesh_squishy_impact_hard3.wav", 65, math.Rand(90, 105))
 	if Debug() then Say(self, "egg planted") end
 	return true
@@ -397,6 +413,10 @@ end
 -- the head passes, else crawl at a nest it already chose, or pick a new one every so often. Returns
 -- true when it is driving at a nest, so Decide leaves the wandering alone for this thought.
 function ENT:EggSeek(now, c, head)
+	if Setting("eggs") <= 0 or Setting("wander") == 0 then
+		self.EggGoal = nil
+		return false
+	end
 	if not self.EggReady then
 		self.EggGoal = nil
 		return false
@@ -424,9 +444,16 @@ function ENT:EggSeek(now, c, head)
 
 	if not self.EggGoal then
 		if now < (self.NextNest or 0) then return false end
-		self.NextNest = now + NEST_GAP
+		-- A map with nowhere secluded to lay would otherwise search every NEST_GAP
+		-- forever; back further off each time a search comes up empty.
+		local misses = self.NestMiss or 0
+		self.NextNest = now + math.min(NEST_GAP * 2 ^ math.min(misses, 4), 24)
 		local at, normal = self:EggNest()
-		if not at then return false end
+		if not at then
+			self.NestMiss = misses + 1
+			return false
+		end
+		self.NestMiss = 0
 		self.EggGoal = { pos = at, normal = normal, expires = now + NEST_HOLD }
 		if Debug() then
 			local d = head:Distance(at)

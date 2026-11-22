@@ -5,6 +5,7 @@ ENT.Base = "base_anim"
 ENT.PrintName = "Evil Snake Egg"
 ENT.Category = "Syhgma's Evil Entities"
 ENT.Spawnable = EvilSnake ~= nil
+ENT.NoDuplicate = true
 ENT.RenderGroup = RENDERGROUP_OPAQUE
 
 ENT.EGG_MODEL = "models/props_junk/watermelon01.mdl"

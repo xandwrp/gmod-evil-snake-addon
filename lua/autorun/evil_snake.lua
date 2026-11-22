@@ -87,7 +87,9 @@ if SERVER then
 	-- damage to it, so a head hit never reaches the snake's OnTakeDamage. Watch
 	-- the balls and sweep each one's path against the head hitbox part instead.
 	local BALL = "prop_combine_ball"
+	local SNAKE = "evil_snake"
 	local balls = {}
+	local snakes = 0
 
 	local function Radius(ball)
 		return math.Clamp(ball:BoundingRadius(), 4, 48)
@@ -112,16 +114,26 @@ if SERVER then
 	end
 
 	hook.Add("OnEntityCreated", "EvilSnakeCombineBall", function(ent)
-		if ent:GetClass() ~= BALL then return end
-		balls[ent] = false
+		local class = ent:GetClass()
+		if class == BALL then
+			balls[ent] = false
+		elseif class == SNAKE then
+			snakes = snakes + 1
+		end
+	end)
+
+	hook.Add("EntityRemoved", "EvilSnakeCombineBall", function(ent)
+		if ent:GetClass() == SNAKE then snakes = math.max(snakes - 1, 0) end
 	end)
 
 	hook.Add("InitPostEntity", "EvilSnakeCombineBall", function()
 		for _, ent in ipairs(ents.FindByClass(BALL)) do balls[ent] = false end
+		snakes = #ents.FindByClass(SNAKE)
 	end)
 
 	hook.Add("Think", "EvilSnakeCombineBall", function()
-		if not next(balls) then return end
+		-- Nothing to sweep against: no balls in flight, or no snakes to hit.
+		if not next(balls) or snakes <= 0 then return end
 		local parts
 		for ball, last in pairs(balls) do
 			if not IsValid(ball) then

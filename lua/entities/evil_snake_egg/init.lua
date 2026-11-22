@@ -37,6 +37,7 @@ local SPINE = "models/Gibs/HGIBS_spine.mdl"
 local ALWAYS = { SKULL, RIB, SPINE }
 local BONES = { RIB, RIB, SPINE, "models/Gibs/HGIBS_scapula.mdl" }
 local BONE_MIN, BONE_MAX = 1, 2 -- extra bones on top of ALWAYS
+local BONE_LIFE = 120 -- seconds a spilled bone stays before it is cleaned up
 
 -- A bone touching the egg feeds it: the egg draws it in and takes this many seconds off its gestation.
 local FEED = 30
@@ -119,6 +120,12 @@ function ENT:SpawnFunction(ply, tr, class)
 	ent.SpawnNormal = normal
 	ent:Spawn()
 	ent:Activate()
+	ent:SetOwner(ply)
+	ent.NoDuplicate = true
+	undo.Create("evil_snake_egg")
+	undo.AddEntity(ent)
+	undo.SetPlayer(ply)
+	ply:AddCleanup("props", ent)
 	return ent
 end
 
@@ -238,6 +245,7 @@ local function Bone(model, pos, vel)
 		phys:SetVelocity(vel)
 		phys:AddAngleVelocity(VectorRand() * 300)
 	end
+	SafeRemoveEntityDelayed(bone, BONE_LIFE)
 end
 
 -- What was growing inside: a small snake, already dead. Die() leaves it lying as a corpse and
@@ -322,6 +330,11 @@ function ENT:Hatch()
 	snake.EggCoil = true
 	snake:Spawn()
 	snake:Activate()
+	local owner = self:GetOwner()
+	if IsValid(owner) then
+		snake:SetOwner(owner)
+		owner:AddCleanup("npcs", snake)
+	end
 	self:EmitSound("npc/barnacle/barnacle_tongue_pull1.wav", 70, 85)
 	SafeRemoveEntity(self)
 end

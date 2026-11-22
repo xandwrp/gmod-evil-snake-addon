@@ -149,6 +149,7 @@ function ENT:SpawnFunction(ply, tr, class)
 	local ent = ents.Create(class)
 	ent:SetPos(tr.HitPos)
 	ent:SetAngles(Angle(0, ply:EyeAngles().y + 180, 0))
+	ent:SetOwner(ply)
 	ent:Spawn()
 	ent:Activate()
 	return ent
@@ -530,7 +531,7 @@ function ENT:Absorb(v)
 	self:Steady()
 	self:Heal(self.Toughness * Setting("meal_heal"))
 	-- Someone fully digested: it carries an egg until it finds somewhere to lay it.
-	self.EggReady = true
+	if Setting("eggs") ~= 0 then self.EggReady = true end
 	hook.Run("EvilSnakeAbsorbed", self, v, lessons)
 end
 
@@ -907,6 +908,15 @@ local function Ball(dmg)
 	end
 end
 
+-- Whoever fired or threw the ball, so its damage is credited and checked like
+-- any other hit instead of landing as the world.
+local function BallOwner(ball)
+	local owner = ball:GetOwner()
+	if IsValid(owner) then return owner end
+	owner = ball:GetPhysicsAttacker()
+	return IsValid(owner) and owner or ball
+end
+
 -- True when the hit landed on the head itself, not on the rest of the body.
 function ENT:OnHead(dmg)
 	local pos = dmg:GetDamagePosition()
@@ -925,6 +935,7 @@ function ENT:BallToHead(dmg)
 	if not ball or ball.EvilSnakeBurst then return end
 	if self.EvilSnakeBallHead then return ball end
 	if not self:OnHead(dmg) then return end
+	dmg:SetAttacker(BallOwner(ball))
 	return ball
 end
 
@@ -950,11 +961,10 @@ function ENT:BallHit(ball, pos)
 	dmg:SetReportedPosition(pos)
 	dmg:SetDamageType(DMG_BLAST)
 	dmg:SetInflictor(ball)
-	dmg:SetAttacker(ball)
+	dmg:SetAttacker(BallOwner(ball))
 	self.EvilSnakeBallHead = true
 	self:TakeDamageInfo(dmg)
 	self.EvilSnakeBallHead = nil
-	Burst(ball)
 end
 
 function ENT:Exposed()
@@ -965,19 +975,21 @@ function ENT:OnTakeDamage(dmg)
 	local fresh = self.Hitbox:Fresh(dmg)
 	if fresh <= 0 then return end
 	local ball = self:BallToHead(dmg)
+	if not ball then
+		-- A ball that hit the body still counts as the shooter's, not the world's.
+		local from = Ball(dmg)
+		if from then dmg:SetAttacker(BallOwner(from)) end
+	end
 	self:Knock(dmg, fresh, not ball)
 	local now = CurTime()
 	if self.Dead or Setting("killable") == 0 or now < self.Born + Setting("spawn_grace") or now < (self.HurtUntil or 0) then return end
 	if Setting("exposed_only") ~= 0 and not self:Exposed() then return end
 	local who, by = Evil.Attacker(dmg)
-	local amount
-	if ball then
-		amount = self.Toughness * HEAD_BALL
-	else
-		local scale = Evil.DamageScale(EvilSnake.Settings, dmg) * self:Where(dmg) * Setting(FROM[who])
-		if scale <= 0 then return end
-		amount = fresh * scale - Setting("armor")
-	end
+	-- A combine ball goes through the same checks as any other hit: where it
+	-- landed, what kind of damage it is, and who it came from.
+	local scale = Evil.DamageScale(EvilSnake.Settings, dmg) * self:Where(dmg) * Setting(FROM[who])
+	if scale <= 0 then return end
+	local amount = fresh * scale - Setting("armor")
 	if amount <= 0 then return end
 	local override = hook.Run("EvilSnakeHurt", self, dmg, amount)
 	if override == false then return end

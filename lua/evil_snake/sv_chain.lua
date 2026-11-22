@@ -69,9 +69,6 @@ local TIGHT_CHECKS = 16
 local TIGHT_LOOK = 2
 local TIGHT_GAIN = 0.25
 local TIGHT_MASK = bit.band(MASK_SOLID, bit.bnot(CONTENTS_MONSTER))
-local SEVER_EVERY = 0.25
-local SEVER_STRETCH = 1.3
-local SEVER_TIME = 1.5
 local PIVOT = 20
 local PREFER = 0.35
 local CALM_LOOK = 4
@@ -370,50 +367,6 @@ local function Unstick(c, i, pos)
 		end
 	end
 	return best
-end
-
--- the first link with a solid through it, like a door that shut across the
--- body. links only get traced while one of them is pulled well past its
--- length, so a resting body or a thin tail draped over a ledge costs nothing
--- and never counts
-local function Severed(c)
-	local x = c.x
-	local n = #x
-	local far = (Chain.Link(c) * SEVER_STRETCH) ^ 2
-	local torn = false
-	for i = 2, n do
-		if x[i]:DistToSqr(x[i - 1]) > far then
-			torn = true
-			break
-		end
-	end
-	if not torn then return end
-	local q = { mask = TIGHT_MASK, filter = c.filter }
-	for i = 2, n do
-		q.start, q.endpos = x[i - 1], x[i]
-		local tr = util.TraceLine(q)
-		if tr.Hit and not tr.StartSolid then return i end
-	end
-end
-
--- pulls everything behind a cut link through to the head's side, laid out
--- behind the last joint still on it the same way a fresh snake is laid out
-local function Rejoin(c, i)
-	local x, old, cn, cd = c.x, c.old, c.cn, c.cd
-	local n = #x
-	local yaw = Chain.HeadYaw(c)
-	if i > 2 then
-		local d = x[i - 2] - x[i - 1]
-		yaw = math.deg(math.atan2(d.y, d.x))
-	end
-	local lift = Setting("radius") * c.girth
-	local laid = EvilSnake.Trail({ Vector(x[i - 1]) }, yaw, n - i + 1, Chain.Link(c), lift, c.filter)
-	for k = i, n do
-		local to = laid[k - i + 2]
-		x[k], old[k], cn[k], cd[k] = to, Vector(to), nil, nil
-	end
-	Chain.Ghost(c, GHOST_TIME)
-	Reseed(c)
 end
 
 local function Climb(c, i, from, to, reached)
@@ -975,16 +928,6 @@ function Chain.Update(c, dt)
 			c.tight = TIGHT_EVERY
 			if Tight(c) then Chain.Squeeze(c, TIGHT_HOLD) end
 			c.calm = Calm(c)
-		end
-		c.severAt = (c.severAt or 0) - dt
-		if c.severAt <= 0 then
-			c.severAt = SEVER_EVERY
-			local cut = not c.pinned and Severed(c)
-			c.severed = cut and (c.severed or 0) + SEVER_EVERY or 0
-			if cut and c.severed >= SEVER_TIME then
-				c.severed = 0
-				Rejoin(c, cut)
-			end
 		end
 	end
 	if c.squeezing > 0 then c.squeezing = math.max(0, c.squeezing - dt) end

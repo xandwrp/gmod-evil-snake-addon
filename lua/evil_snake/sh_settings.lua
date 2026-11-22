@@ -53,6 +53,8 @@ EvilSnake.SETTINGS = {
 		help = "Crawls around on its own when there is nothing to hunt" },
 	{ name = "wall_addiction", default = 0, min = 0, max = 1, label = "Wall addiction",
 		help = "Always grips walls and ceilings, heads for the nearest wall whenever it wanders onto the floor and never drops off the ceiling on its own" },
+	{ name = "eggs", default = 0, min = 0, max = 1, label = "Eggs",
+		help = "It lays an egg after digesting someone, which hatches into another snake. At 0 it never lays" },
 	{ name = "egg_cap", default = 10, min = 0, max = 100, decimals = 0, label = "Population cap",
 		help = "Most living snakes there can be before eggs stop hatching. Eggs that are due wait, "
 			.. "unhatched, until the count drops below this. At 0 there is no cap" },
