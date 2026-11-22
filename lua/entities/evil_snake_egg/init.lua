@@ -3,10 +3,6 @@ AddCSLuaFile("cl_init.lua")
 include("shared.lua")
 if not EvilSnake then return end
 
--- Which copy of this file the server actually loaded. Printed with
--- lua_run print("egg build", EvilSnake.EggBuild) so a build can be identified without guessing.
-EvilSnake.EggBuild = "2026-11-22 physics-before-scale"
-
 -- The snake's egg, the same as the crawler's apart from a white shell, 100 health, a dead snake
 -- inside, and its own gestation and population cap settings.
 -- A physics prop: the HL2 watermelon at twice its size, in a white shell on the client. Laid on a
@@ -54,8 +50,8 @@ local FEEDS = {
 	["models/gibs/hgibs_spine.mdl"] = true,
 }
 
--- An ellipsoid the size of the scaled melon. The melon's own physics do not scale with SetModelScale,
--- so the egg carries a hull of its own, which also rolls like a melon where a box would tip end over end.
+-- An ellipsoid the size of the scaled melon. Model physics do not scale with SetModelScale, so it
+-- gets its own convex hull, which also rolls like a melon where a box would tip end over end.
 local function Hull()
 	local pts = { Vector(0, 0, EGG_HALF.z), Vector(0, 0, -EGG_HALF.z) }
 	for i = 1, HULL_RINGS do
@@ -71,23 +67,16 @@ end
 
 function ENT:Initialize()
 	self:SetModel(self.EGG_MODEL)
-	-- Physics first, then the model scale, as the crawler egg does. Points handed to PhysicsInitConvex are
-	-- taken as they are; creating the hull after SetModelScale left the egg colliding as the melon's
-	-- unscaled self (7.5 units of half-height measured in game), which is under the player's step height,
-	-- so players and shots passed it as if it were not there while physics props still hit it.
-	self:PhysicsInitConvex(Hull())
 	self:SetModelScale(self.EGG_SCALE, 0)
+	self:PhysicsInitConvex(Hull())
+	-- Do not EnableCustomCollisions here. That sets FSOLID_CUSTOMRAYTEST and FSOLID_CUSTOMBOXTEST, which
+	-- tells the engine the entity runs its own ray and box tests; a plain Lua entity does not, so bullets
+	-- and player movement traces skip it entirely while the physics object still collides with the world.
+	-- That is why eggs could fall and land but never be shot or walked into. It is only meant for meshes
+	-- made with PhysicsFromMesh; a convex hull already gives proper traces on its own.
+	self:SetCollisionBounds(-EGG_HALF, EGG_HALF)
 	self:SetMoveType(MOVETYPE_VPHYSICS)
 	self:SetSolid(SOLID_VPHYSICS)
-	self:SetCollisionBounds(-EGG_HALF, EGG_HALF)
-	-- SetSolid puts FSOLID_CUSTOMRAYTEST and FSOLID_CUSTOMBOXTEST back on, and with those set the engine asks
-	-- the entity to run its own ray and box tests. A scripted entity runs none, so it is skipped by bullets
-	-- and players while the physics object still collides. Clear them, and again on the next tick in case the
-	-- engine finishes the setup after Initialize returns.
-	self:SetSolidFlags(0)
-	timer.Simple(0, function()
-		if IsValid(self) then self:SetSolidFlags(0) end
-	end)
 	self:SetHealth(EGG_HEALTH)
 	self:SetMaxHealth(EGG_HEALTH)
 	self:SetSaveValue("m_takedamage", 2)
