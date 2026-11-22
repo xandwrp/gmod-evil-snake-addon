@@ -69,20 +69,16 @@ function ENT:Initialize()
 	self:SetModel(self.EGG_MODEL)
 	self:SetModelScale(self.EGG_SCALE, 0)
 	self:PhysicsInitConvex(Hull())
-	-- The convex hull drives the rolling, but players and bullets trace against a box from the bounds. With
-	-- SOLID_VPHYSICS those traces go through the physics collision model, which is the part this egg kept
-	-- slipping through; the bounds only count for collision when the solid type is SOLID_BBOX. Clearing the
-	-- solid flags first drops anything left over from the trigger and custom-trace setup this used to have.
-	self:SetSolidFlags(0)
-	self:SetCollisionBounds(-EGG_HALF, EGG_HALF)
 	self:SetMoveType(MOVETYPE_VPHYSICS)
-	self:SetSolid(SOLID_BBOX)
-	-- Setting the solid type puts the custom ray and box test flags back on, and with those set the engine
-	-- asks the entity to run its own trace tests; a scripted entity does not, so every bullet and player
-	-- sweep is skipped. Clear them last.
+	-- SOLID_VPHYSICS, the same solid type an ordinary prop uses: rays and player hulls then test against the
+	-- physics object itself. A box from SetCollisionBounds only counts for SOLID_BBOX, and this egg was being
+	-- skipped by player and physgun traces even with clean bounds, so it goes back to tracing the hull.
+	self:SetSolid(SOLID_VPHYSICS)
+	-- Setting the solid type puts FSOLID_CUSTOMRAYTEST and FSOLID_CUSTOMBOXTEST back on, and with those set the
+	-- engine asks the entity to run its own ray and box tests. A scripted entity runs none, so bullets and
+	-- players pass through while the physics object still collides. Clear them, and again on the next tick in
+	-- case the engine finishes the setup after Initialize returns.
 	self:SetSolidFlags(0)
-	-- The engine finishes setting the entity up after Initialize returns and can put the flags back on then,
-	-- so clear them once more on the first tick, before anything has had a chance to change the solidity.
 	timer.Simple(0, function()
 		if IsValid(self) then self:SetSolidFlags(0) end
 	end)
