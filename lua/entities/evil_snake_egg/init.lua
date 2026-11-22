@@ -69,7 +69,11 @@ function ENT:Initialize()
 	self:SetModel(self.EGG_MODEL)
 	self:SetModelScale(self.EGG_SCALE, 0)
 	self:PhysicsInitConvex(Hull())
-	self:EnableCustomCollisions(true)
+	-- Do not EnableCustomCollisions here. That sets FSOLID_CUSTOMRAYTEST and FSOLID_CUSTOMBOXTEST, which
+	-- tells the engine the entity runs its own ray and box tests; a plain Lua entity does not, so bullets
+	-- and player movement traces skip it entirely while the physics object still collides with the world.
+	-- That is why eggs could fall and land but never be shot or walked into. It is only meant for meshes
+	-- made with PhysicsFromMesh; a convex hull already gives proper traces on its own.
 	self:SetCollisionBounds(-EGG_HALF, EGG_HALF)
 	self:SetMoveType(MOVETYPE_VPHYSICS)
 	self:SetSolid(SOLID_VPHYSICS)
