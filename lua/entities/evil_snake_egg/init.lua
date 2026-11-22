@@ -3,6 +3,10 @@ AddCSLuaFile("cl_init.lua")
 include("shared.lua")
 if not EvilSnake then return end
 
+-- Which copy of this file the server actually loaded. Printed with
+-- lua_run print("egg build", EvilSnake.EggBuild) so a build can be identified without guessing.
+EvilSnake.EggBuild = "2026-11-22 physics-before-scale"
+
 -- The snake's egg, the same as the crawler's apart from a white shell, 100 health, a dead snake
 -- inside, and its own gestation and population cap settings.
 -- A physics prop: the HL2 watermelon at twice its size, in a white shell on the client. Laid on a
