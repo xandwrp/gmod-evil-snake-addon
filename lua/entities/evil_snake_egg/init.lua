@@ -52,14 +52,19 @@ local FEEDS = {
 
 -- An ellipsoid the size of the scaled melon. Model physics do not scale with SetModelScale, so it
 -- gets its own convex hull, which also rolls like a melon where a box would tip end over end.
+-- The points are scaled by the model scale again: a hull given the melon's already-scaled half-size came
+-- out a third of that in the world (measured, 7.5 units of half-height instead of 23), which left the
+-- collider 15 tall and the player stepping straight over it. Physics init reads the points as unscaled
+-- model space and divides by the model scale.
 local function Hull()
-	local pts = { Vector(0, 0, EGG_HALF.z), Vector(0, 0, -EGG_HALF.z) }
+	local H = EGG_HALF * EGG_SCALE
+	local pts = { Vector(0, 0, H.z), Vector(0, 0, -H.z) }
 	for i = 1, HULL_RINGS do
 		local lat = math.pi * (i / (HULL_RINGS + 1) - 0.5)
 		local c, s = math.cos(lat), math.sin(lat)
 		for k = 0, HULL_SIDES - 1 do
 			local a = k / HULL_SIDES * math.pi * 2
-			pts[#pts + 1] = Vector(EGG_HALF.x * c * math.cos(a), EGG_HALF.y * c * math.sin(a), EGG_HALF.z * s)
+			pts[#pts + 1] = Vector(H.x * c * math.cos(a), H.y * c * math.sin(a), H.z * s)
 		end
 	end
 	return pts
