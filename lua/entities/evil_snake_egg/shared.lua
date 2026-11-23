@@ -6,8 +6,9 @@ ENT.PrintName = "Evil Snake Egg"
 ENT.Category = "Syhgma's Evil Entities"
 ENT.Spawnable = EvilSnake ~= nil
 ENT.RenderGroup = RENDERGROUP_OPAQUE
--- Stops the spawn menu handing out a second one while the button is held. It is a table field the
--- spawn menu reads before spawning; setting ent.NoDuplicate on the instance afterwards does nothing.
+-- Keeps the egg out of duplicator dupes and saves. The duplicator skips any entity that sets this,
+-- so a save or a dupe that includes an egg is refused rather than restoring one;
+-- setting ent.NoDuplicate on the instance does nothing at all.
 ENT.DoNotDuplicate = true
 
 ENT.EGG_MODEL = "models/props_junk/watermelon01.mdl"

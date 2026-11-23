@@ -149,7 +149,9 @@ function ENT:SpawnFunction(ply, tr, class)
 	local ent = ents.Create(class)
 	ent:SetPos(tr.HitPos)
 	ent:SetAngles(Angle(0, ply:EyeAngles().y + 180, 0))
-	ent:SetOwner(ply)
+	-- Creator, not owner. SetOwner writes the engine's m_hOwnerEntity, which also decides who passes
+	-- through the snake's own collision; SetCreator records who made it without touching physics.
+	ent:SetCreator(ply)
 	ent:Spawn()
 	ent:Activate()
 	return ent
