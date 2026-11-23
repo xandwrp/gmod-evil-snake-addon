@@ -38,6 +38,10 @@ local ALWAYS = { SKULL, RIB, SPINE }
 local BONES = { RIB, RIB, SPINE, "models/Gibs/HGIBS_scapula.mdl" }
 local BONE_MIN, BONE_MAX = 1, 2 -- extra bones on top of ALWAYS
 
+-- Bones are plain props dropped on the map, so nothing ever removes them on its own. They would
+-- otherwise pile up for the rest of the round, one heap per egg that got broken.
+local BONE_LIFE = 120 -- seconds a spilled bone stays before it is cleaned up
+
 -- A bone touching the egg feeds it: the egg draws it in and takes this many seconds off its gestation.
 local FEED = 30
 local SWALLOW = 0.3 -- seconds the bone takes to sink into the shell
@@ -223,7 +227,8 @@ end
 function ENT:GravGunPickupAllowed() self:Unglue() return true end
 function ENT:GravGunPunt() self:Unglue() return true end
 
--- One bone flung out of the shell. Plain props with no timer on them: they stay until cleaned up.
+-- One bone flung out of the shell. It is an ordinary prop, so it is put on a timer: without one
+-- every broken egg leaves a handful of bones lying around for good.
 local function Bone(model, pos, vel)
 	local bone = ents.Create("prop_physics")
 	if not IsValid(bone) then return end
@@ -238,6 +243,7 @@ local function Bone(model, pos, vel)
 		phys:SetVelocity(vel)
 		phys:AddAngleVelocity(VectorRand() * 300)
 	end
+	SafeRemoveEntityDelayed(bone, BONE_LIFE)
 end
 
 -- What was growing inside: a small snake, already dead. Die() leaves it lying as a corpse and
