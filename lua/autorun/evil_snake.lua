@@ -83,6 +83,71 @@ include("evil_snake/sh_settings.lua")
 include("evil_snake/sh_body.lua")
 include("evil_snake/sh_stomach.lua")
 if SERVER then
+	-- A combine ball bounces off evil_hitbox without the engine ever dealing
+	-- damage to it, so a head hit never reaches the snake's OnTakeDamage. Watch
+	-- the balls and sweep each one's path against the head hitbox part instead.
+	local BALL = "prop_combine_ball"
+	local SNAKE = "evil_snake"
+	local balls = {}
+	local snakes = 0
+
+	local function Radius(ball)
+		return math.Clamp(ball:BoundingRadius(), 4, 48)
+	end
+
+	local function Head(ball, from, to, parts)
+		local delta, reach = to - from, Radius(ball)
+		for _, part in ipairs(parts) do
+			local snake = part.EvilHitboxOwner
+			if part.EvilIndex == 1 and IsValid(snake) and snake:GetClass() == "evil_snake" then
+				local s = (part.EvilSize or 0) + reach
+				local box = Vector(s, s, s)
+				if delta:LengthSqr() > 1e-6 then
+					if util.IntersectRayWithOBB(from, delta, part:GetPos(), part:GetAngles(), -box, box) then
+						return snake, part
+					end
+				elseif from:DistToSqr(part:GetPos()) <= s * s then
+					return snake, part
+				end
+			end
+		end
+	end
+
+	hook.Add("OnEntityCreated", "EvilSnakeCombineBall", function(ent)
+		local class = ent:GetClass()
+		if class == BALL then
+			balls[ent] = false
+		elseif class == SNAKE then
+			snakes = snakes + 1
+		end
+	end)
+
+	hook.Add("EntityRemoved", "EvilSnakeCombineBall", function(ent)
+		if ent:GetClass() == SNAKE then snakes = math.max(snakes - 1, 0) end
+	end)
+
+	hook.Add("InitPostEntity", "EvilSnakeCombineBall", function()
+		for _, ent in ipairs(ents.FindByClass(BALL)) do balls[ent] = false end
+		snakes = #ents.FindByClass(SNAKE)
+	end)
+
+	hook.Add("Think", "EvilSnakeCombineBall", function()
+		-- Nothing to sweep against: no balls in flight, or no snakes to hit.
+		if not next(balls) or snakes <= 0 then return end
+		local parts
+		for ball, last in pairs(balls) do
+			if not IsValid(ball) then
+				balls[ball] = nil
+			else
+				local now = ball:GetPos()
+				parts = parts or ents.FindByClass("evil_hitbox")
+				local snake, part = Head(ball, last or now, now, parts)
+				if snake and not ball.EvilSnakeHit then snake:BallHit(ball, part:GetPos()) end
+				balls[ball] = now
+			end
+		end
+	end)
+
 	resource.AddFile("materials/killicons/evil_snake.png")
 	include("evil_snake/sv_chain.lua")
 	include("evil_snake/sv_path.lua")

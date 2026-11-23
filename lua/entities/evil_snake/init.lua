@@ -4,6 +4,7 @@ include("shared.lua")
 if not EvilSnake then return end
 
 util.AddNetworkString("EvilSnakeBody")
+include("sv_eggs.lua")
 
 local Setting = EvilSnake.Setting
 
@@ -68,6 +69,7 @@ local DROP_TIME = 1.5
 local DROP_CHANCE = 0.25
 local TOUGH = 0.5
 local HEAD_HIT = 1.5
+local HEAD_BALL = 0.2
 local SHOCK_FADE = 2
 local PAIN_GAP = 0.6
 local PAIN = { "npc/ichthyosaur/attack_growl1.wav", "npc/ichthyosaur/attack_growl2.wav", "npc/ichthyosaur/attack_growl3.wav" }
@@ -147,6 +149,9 @@ function ENT:SpawnFunction(ply, tr, class)
 	local ent = ents.Create(class)
 	ent:SetPos(tr.HitPos)
 	ent:SetAngles(Angle(0, ply:EyeAngles().y + 180, 0))
+	-- Creator, not owner. SetOwner writes the engine's m_hOwnerEntity, which also decides who passes
+	-- through the snake's own collision; SetCreator records who made it without touching physics.
+	ent:SetCreator(ply)
 	ent:Spawn()
 	ent:Activate()
 	return ent
@@ -157,6 +162,8 @@ function ENT:Initialize()
 	self:SetCollisionGroup(COLLISION_GROUP_DEBRIS)
 	self:DrawShadow(false)
 	self:SetGirth(1)
+	-- EggScale is set by a broken egg for the small stillborn snake inside it.
+	self:SetBodyScale(self.EggScale or 1)
 	self:Bounds()
 	self.BaseSegments = math.Round(Setting("segments"))
 	self:SetLength(self.BaseSegments)
@@ -164,8 +171,15 @@ function ENT:Initialize()
 		return not e.EvilHitboxOwner and e ~= self and not e:IsPlayer() and not e:IsNPC() and not e:IsNextBot()
 			and e:GetClass() ~= "evil_snake" and not e.EvilDowned and not e.EvilSnakeRide
 	end
-	local joints = EvilSnake.Layout(self:GetPos(), self:GetAngles().y, self.BaseSegments, filter)
+	local scale = self:Scaled()
+	-- EggCoil is set by an egg: the snake starts curled up where the egg was.
+	local joints = EvilSnake.Layout(self:GetPos(), self:GetAngles().y, self.BaseSegments, filter, scale, self.EggCoil)
 	self.Chain = EvilSnake.Chain.New(joints, filter)
+	-- The chain's girth is its thickness against a normal snake, so a small snake starts thinner.
+	if scale ~= 1 then
+		self.Chain.scale = scale
+		EvilSnake.Chain.Swell(self.Chain, scale)
+	end
 	self:SetPos(joints[1])
 	self.LastThink = CurTime()
 	self.Dirty = true
@@ -502,9 +516,10 @@ function ENT:Grow()
 	local mass = st:Mass() + st:Eating(#self.Chain.x - 1)
 	self:SetLength(st:Length(self.BaseSegments, mass))
 	local girth = st:Girth(mass)
-	if math.abs(girth - self.Chain.girth) < 1e-3 then return end
+	local thick = girth * self:Scaled()
+	if math.abs(thick - self.Chain.girth) < 1e-3 then return end
 	self:SetGirth(girth)
-	EvilSnake.Chain.Swell(self.Chain, girth)
+	EvilSnake.Chain.Swell(self.Chain, thick)
 	self:Bounds()
 	if not self.Dead then self:Box() end
 	self.Dirty = true
@@ -517,6 +532,8 @@ function ENT:Absorb(v)
 	self:Toughen()
 	self:Steady()
 	self:Heal(self.Toughness * Setting("meal_heal"))
+	-- Someone fully digested: it carries an egg until it finds somewhere to lay it.
+	if Setting("eggs") ~= 0 then self.EggReady = true end
 	hook.Run("EvilSnakeAbsorbed", self, v, lessons)
 end
 
@@ -771,7 +788,7 @@ local function Struck(dmg, fallback)
 	return pos
 end
 
-function ENT:Knock(dmg, amount)
+function ENT:Knock(dmg, amount, stun)
 	local k = Setting("knockback")
 	if k <= 0 or self.Untenable then return end
 	local give = k * (1 - self.Steadied) / math.max(self:Weight(), SMALLEST)
@@ -805,6 +822,7 @@ function ENT:Knock(dmg, amount)
 			if w > 0.01 then EvilSnake.Chain.Kick(c, i, dir * (peak * w)) end
 		end
 	end
+	if stun == false then return end
 	if peak < LIMP_SPEED then return end
 	local limp = math.min(LIMP_TIME * peak / LIMP_SPEED, LIMP_MAX)
 	self.LimpUntil = math.max(self.LimpUntil or 0, CurTime() + limp)
@@ -885,6 +903,72 @@ end
 
 local FROM = { player = "from_players", npc = "from_npcs", world = "from_world" }
 
+-- The combine ball behind a hit, if this damage came from one.
+local function Ball(dmg)
+	for _, ent in ipairs({ dmg:GetInflictor(), dmg:GetAttacker() }) do
+		if IsValid(ent) and ent:GetClass() == "prop_combine_ball" then return ent end
+	end
+end
+
+-- Whoever fired or threw the ball, so its damage is credited and checked like
+-- any other hit instead of landing as the world.
+local function BallOwner(ball)
+	local owner = ball:GetOwner()
+	if IsValid(owner) then return owner end
+	owner = ball:GetPhysicsAttacker()
+	return IsValid(owner) and owner or ball
+end
+
+-- True when the hit landed on the head itself, not on the rest of the body.
+function ENT:OnHead(dmg)
+	local pos = dmg:GetDamagePosition()
+	if pos:IsZero() then pos = dmg:GetReportedPosition() end
+	local part = self.EvilStruckPart
+	if pos:IsZero() then return part ~= nil and part.EvilIndex == 1 end
+	local x, r = self.Chain.x, self:Radius()
+	local at = EvilSnake.HeadPoints(x[1], x[2], r, self.Chain.up)
+	return pos:Distance(at) <= EvilSnake.HeadRadius(r) * HEAD_HIT
+end
+
+-- A combine ball to the head is worth a fixed slice of its health, wherever
+-- the ball came from and whatever it would have done to the rest of the body.
+function ENT:BallToHead(dmg)
+	local ball = Ball(dmg)
+	if not ball or ball.EvilSnakeBurst then return end
+	if self.EvilSnakeBallHead then return ball end
+	if not self:OnHead(dmg) then return end
+	dmg:SetAttacker(BallOwner(ball))
+	return ball
+end
+
+-- Set the ball off the way its lifetime would, once, without counting the blast
+-- as another head hit.
+local function Burst(ball)
+	if not IsValid(ball) or ball.EvilSnakeBurst then return end
+	ball.EvilSnakeBurst = true
+	ball:Fire("Explode")
+end
+
+-- The engine never damages the scripted hitboxes with a combine ball, so one that
+-- bounces off the head never reaches OnTakeDamage. The autorun watcher sweeps the
+-- ball against the head hitbox and calls this with the contact point instead.
+function ENT:BallHit(ball, pos)
+	if not IsValid(ball) or ball.EvilSnakeBurst then return end
+	ball.EvilSnakeHit = true
+	local amount = self.Toughness * HEAD_BALL
+	local dmg = DamageInfo()
+	dmg:SetDamage(amount)
+	dmg:SetMaxDamage(amount)
+	dmg:SetDamagePosition(pos)
+	dmg:SetReportedPosition(pos)
+	dmg:SetDamageType(DMG_BLAST)
+	dmg:SetInflictor(ball)
+	dmg:SetAttacker(BallOwner(ball))
+	self.EvilSnakeBallHead = true
+	self:TakeDamageInfo(dmg)
+	self.EvilSnakeBallHead = nil
+end
+
 function ENT:Exposed()
 	return self.Held ~= nil or IsValid(self.Tongue.ent)
 end
@@ -892,11 +976,19 @@ end
 function ENT:OnTakeDamage(dmg)
 	local fresh = self.Hitbox:Fresh(dmg)
 	if fresh <= 0 then return end
-	self:Knock(dmg, fresh)
+	local ball = self:BallToHead(dmg)
+	if not ball then
+		-- A ball that hit the body still counts as the shooter's, not the world's.
+		local from = Ball(dmg)
+		if from then dmg:SetAttacker(BallOwner(from)) end
+	end
+	self:Knock(dmg, fresh, not ball)
 	local now = CurTime()
 	if self.Dead or Setting("killable") == 0 or now < self.Born + Setting("spawn_grace") or now < (self.HurtUntil or 0) then return end
 	if Setting("exposed_only") ~= 0 and not self:Exposed() then return end
 	local who, by = Evil.Attacker(dmg)
+	-- A combine ball goes through the same checks as any other hit: where it
+	-- landed, what kind of damage it is, and who it came from.
 	local scale = Evil.DamageScale(EvilSnake.Settings, dmg) * self:Where(dmg) * Setting(FROM[who])
 	if scale <= 0 then return end
 	local amount = fresh * scale - Setting("armor")
@@ -917,9 +1009,14 @@ function ENT:OnTakeDamage(dmg)
 			self:Cry(PAIN)
 		end
 	end)
-	if self.Hp <= 0 then return self:Die(dmg) end
+	if self.Hp <= 0 then
+		self:Die(dmg)
+		Burst(ball)
+		return
+	end
 	self:Shaken(amount, now)
 	self:Avenge(by)
+	Burst(ball)
 end
 
 function ENT:Shaken(amount, now)
@@ -974,9 +1071,11 @@ function ENT:Die(dmg)
 		for i = 1, #c.x, GUTS do self:Bleed(c.x[i], 2) end
 		self:Cry(DIE)
 	end)
+	self.EggReady, self.EggGoal = nil, nil
 	local attacker, inflictor = dmg:GetAttacker(), dmg:GetInflictor()
-	hook.Run("EvilSnakeKilled", self, attacker, inflictor)
-	if Setting("npc_kill") ~= 0 then
+	-- A stillborn snake from a broken egg was never alive, so nobody gets a kill for it.
+	if not self.Stillborn then hook.Run("EvilSnakeKilled", self, attacker, inflictor) end
+	if Setting("npc_kill") ~= 0 and not self.Stillborn then
 		ProtectedCall(function() hook.Run("OnNPCKilled", self, attacker, inflictor) end)
 	end
 	SafeRemoveEntityDelayed(self, Setting("corpse_time"))
@@ -1389,6 +1488,9 @@ function ENT:Decide(now)
 		else
 			EvilSnake.Chain.Drive(c, math.deg(math.atan2(to.y, to.x)), Setting("hunt_speed") * self.Sharp.speed, aim)
 		end
+	elseif not prey and not c.fly and self:EggSeek(now, c, head) then
+		-- Crawling to a nest to lay the egg it carries; EggSeek did the driving.
+		return
 	elseif prey or Setting("wander") ~= 0 then
 		if now >= (self.NextWander or 0) then
 			self.WanderYaw = self.WanderYaw + math.Rand(-WANDER_TURN, WANDER_TURN)

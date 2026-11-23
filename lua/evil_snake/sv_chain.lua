@@ -151,7 +151,7 @@ local function Hull(c, i, from, to)
 end
 
 function Chain.Link(c)
-	return Setting("segment_length") * c.stretch
+	return Setting("segment_length") * c.stretch * (c.scale or 1)
 end
 
 function Chain.HeadYaw(c)

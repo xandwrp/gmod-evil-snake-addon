@@ -53,6 +53,15 @@ EvilSnake.SETTINGS = {
 		help = "Crawls around on its own when there is nothing to hunt" },
 	{ name = "wall_addiction", default = 0, min = 0, max = 1, label = "Wall addiction",
 		help = "Always grips walls and ceilings, heads for the nearest wall whenever it wanders onto the floor and never drops off the ceiling on its own" },
+	{ name = "eggs", default = 0, min = 0, max = 1, label = "Eggs",
+		help = "It lays an egg after digesting someone, which hatches into another snake. At 0 it never lays" },
+	{ name = "egg_cap", default = 10, min = 0, max = 100, decimals = 0, label = "Population cap",
+		help = "Most snakes and unhatched eggs there can be at once. At this count it stops laying, and "
+			.. "eggs that are already due wait unhatched until the count drops below it. At 0 there is no cap" },
+	{ name = "egg_time", default = 60, min = 1, max = 600, decimals = 0, label = "Egg gestation",
+		help = "Seconds an egg takes to hatch into a snake. A snake lays one somewhere secluded after it digests someone. "
+			.. "Eggs are physics props with 100 health: they can be knocked loose, picked up, thrown, and break when "
+			.. "shot or slammed. A broken egg spills bones and a dead snake" },
 	{ name = "fungus_smear", default = 10, min = 0, max = 60, decimals = 0, label = "Fungus smear", needs = "EvilFungus",
 		help = "Seconds it keeps smearing fresh fungus behind it after crawling through live fungus. At 0 it never picks any up" },
 	{ name = "hunt_speed", default = 170, min = 0, max = 1000, decimals = 0, label = "Hunting speed",
@@ -184,4 +193,19 @@ end
 
 function EvilSnake.Color()
 	return EvilSnake.Settings:Color("color")
+end
+
+-- Living snakes, not counting corpses (killed ones and stillborn ones from broken eggs).
+function EvilSnake.Population()
+	local n = 0
+	for _, s in ipairs(ents.FindByClass("evil_snake")) do
+		if not s:GetDead() and not s.Stillborn then n = n + 1 end
+	end
+	return n
+end
+
+-- Whether the population cap is reached or over. Always false at cap 0.
+function EvilSnake.AtCap()
+	local cap = EvilSnake.Setting("egg_cap")
+	return cap > 0 and EvilSnake.Population() >= cap
 end
