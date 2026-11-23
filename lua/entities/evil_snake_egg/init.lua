@@ -5,10 +5,11 @@ if not EvilSnake then return end
 
 -- The snake's egg, the same as the crawler's apart from a white shell, 100 health, a dead snake
 -- inside, and its own gestation and population cap settings.
--- A physics prop: the HL2 watermelon at twice its size, in a white shell on the client. Laid on a
--- floor it settles like any other object. Laid on a wall or ceiling it is glued in place (motion off) until something knocks it
--- loose: a hit, a shot, the gravity gun or the physics gun. After that it is a loose prop that rolls,
--- can be carried and thrown, and breaks if it is slammed hard enough or runs out of health.
+-- A physics prop: the spawn-menu PHX cannonball scaled to crawler-and-a-half size, in a white shell
+-- on the client. Laid on a floor it settles like any other object. Laid on a wall or ceiling it is
+-- glued in place (motion off) until something knocks it loose: a hit, a shot, the gravity gun or the
+-- physics gun. After that it is a loose prop that rolls, can be carried and thrown, and breaks if it
+-- is slammed hard enough or runs out of health.
 -- When its time is up it hatches into a snake. Broken before then, it spills a few bones (always a
 -- skull) that stay in the world, and a stillborn snake that lies dead like any other snake corpse.
 
@@ -53,29 +54,34 @@ local FEEDS = {
 	["models/gibs/hgibs_spine.mdl"] = true,
 }
 
--- An ellipsoid the size of the scaled melon. Model physics do not scale with SetModelScale, so it
--- gets its own convex hull, which also rolls like a melon where a box would tip end over end.
+-- A sphere the size of the scaled ball, in model space: the model's origin sits at the bottom of the
+-- ball, so the hull runs from the origin up one whole diameter. Model physics do not scale with
+-- SetModelScale, so it gets its own convex hull, and this one lines up with the mesh exactly. The
+-- rings are offset by half a step so none of them lands on the equator of the sampling and collapses
+-- into a single point: vphysics chokes on a hull with a ring of coincident points.
 local function Hull()
-	local pts = { Vector(0, 0, EGG_HALF.z), Vector(0, 0, -EGG_HALF.z) }
+	local pts = { Vector(0, 0, 0), Vector(0, 0, EGG_HALF.z * 2) }
 	for i = 1, HULL_RINGS do
-		local lat = math.pi * (i / (HULL_RINGS + 1) - 0.5)
-		local c, s = math.cos(lat), math.sin(lat)
+		local phi = math.pi * (i + 0.5) / (HULL_RINGS + 1)
+		local r, h = math.sin(phi), math.cos(phi)
 		for k = 0, HULL_SIDES - 1 do
 			local a = k / HULL_SIDES * math.pi * 2
-			pts[#pts + 1] = Vector(EGG_HALF.x * c * math.cos(a), EGG_HALF.y * c * math.sin(a), EGG_HALF.z * s)
+			pts[#pts + 1] = Vector(EGG_HALF.x * r * math.cos(a), EGG_HALF.y * r * math.sin(a), EGG_HALF.z * (1 + h))
 		end
 	end
 	return pts
 end
 
 function ENT:Initialize()
+	-- Solid and move type first: PhysicsInitConvex builds the object from what the entity is now,
+	-- and vphysics wants the solid type already set.
+	self:SetSolid(SOLID_VPHYSICS)
+	self:SetMoveType(MOVETYPE_VPHYSICS)
 	self:SetModel(self.EGG_MODEL)
 	self:SetModelScale(self.EGG_SCALE, 0)
+
 	self:PhysicsInitConvex(Hull())
-	self:EnableCustomCollisions(true)
-	self:SetCollisionBounds(-EGG_HALF, EGG_HALF)
-	self:SetMoveType(MOVETYPE_VPHYSICS)
-	self:SetSolid(SOLID_VPHYSICS)
+	self:SetCollisionBounds(Vector(-EGG_HALF.x, -EGG_HALF.y, 0), Vector(EGG_HALF.x, EGG_HALF.y, EGG_HALF.z * 2))
 	self:SetHealth(EGG_HEALTH)
 	self:SetMaxHealth(EGG_HEALTH)
 	self:SetSaveValue("m_takedamage", 2)
@@ -118,11 +124,15 @@ function ENT:SpawnFunction(ply, tr, class)
 	fwd:Normalize()
 	local ent = ents.Create(class)
 	if not IsValid(ent) then return end
-	ent:SetPos(tr.HitPos + normal * (EGG_HALF.z + 1))
+	ent:SetPos(tr.HitPos + normal)
 	ent:SetAngles(fwd:AngleEx(normal))
 	ent.SpawnNormal = normal
 	ent:Spawn()
-	ent:Activate()
+	-- No Activate here. On a scripted entity with a SetModelScale on it, Activate throws away the
+	-- physics object and rebuilds a scaled SOLID_VPHYSICS one from the model, and the PHX cannonball
+	-- ships without a .phy: the engine then builds a convex hull out of the 1087-vertex render mesh.
+	-- That is 13 seconds of frozen game per spawn. The hull made in Initialize is already the right
+	-- size, so there is nothing to activate into.
 	-- Tied to whoever spawned it. SetCreator rather than SetOwner: SetOwner writes the engine's own
 	-- owner field (m_hOwnerEntity), which for a physics entity is the engine's business and is what
 	-- looked like it was costing the egg its collisions. SetCreator is the GMod notion of who made it,
@@ -309,7 +319,7 @@ function ENT:Hatch()
 	end
 	-- Still glued: hatch out the way it was laid. Loose: out of the top, wherever it ended up.
 	local normal = self.Glued and self.LaidNormal or Vector(0, 0, 1)
-	local at = self:GetPos() + normal * (EGG_THICK * 0.5 + 12)
+	local at = self:GetPos() + normal * (EGG_THICK + 12)
 	local room = util.TraceHull({
 		start = at, endpos = at,
 		mins = Vector(-12, -12, -12), maxs = Vector(12, 12, 12),
