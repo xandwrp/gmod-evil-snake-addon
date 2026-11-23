@@ -397,9 +397,10 @@ function ENT:LayAt(at, normal)
 	egg.SpawnNormal = normal
 	egg.Layer = self
 	egg:Spawn()
-	egg.NoDuplicate = true
-	local owner = self:GetOwner()
-	if IsValid(owner) then egg:SetOwner(owner) end
+	-- The laying snake's creator, not its engine owner. SetOwner writes m_hOwnerEntity, the field that
+	-- cost a placed egg its collisions; SetCreator is all undo and cleanup ever needed.
+	local maker = self:GetCreator()
+	if IsValid(maker) then egg:SetCreator(maker) end
 	egg:Activate()
 	self.EggReady = false
 	self.EggGoal = nil

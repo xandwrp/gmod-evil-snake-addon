@@ -128,7 +128,6 @@ function ENT:SpawnFunction(ply, tr, class)
 	-- looked like it was costing the egg its collisions. SetCreator is the GMod notion of who made it,
 	-- which is all undo and cleanup need.
 	ent:SetCreator(ply)
-	ent.NoDuplicate = true
 	undo.Create("evil_snake_egg")
 	undo.AddEntity(ent)
 	undo.SetPlayer(ply)
