@@ -123,15 +123,6 @@ function ENT:SpawnFunction(ply, tr, class)
 	ent.SpawnNormal = normal
 	ent:Spawn()
 	ent:Activate()
-	-- Tied to whoever spawned it, so a player can undo it and the entity gets cleaned up with their
-	-- props instead of lying around for the rest of the round. NoDuplicate keeps the spawner from
-	-- dropping a second copy when the button is held.
-	ent:SetOwner(ply)
-	ent.NoDuplicate = true
-	undo.Create("evil_snake_egg")
-	undo.AddEntity(ent)
-	undo.SetPlayer(ply)
-	ply:AddCleanup("props", ent)
 	return ent
 end
 
@@ -337,12 +328,6 @@ function ENT:Hatch()
 	snake.EggCoil = true
 	snake:Spawn()
 	snake:Activate()
-	-- A hatched snake belongs to whoever placed the egg: undoable, and cleaned up with their props.
-	local owner = self:GetOwner()
-	if IsValid(owner) then
-		snake:SetOwner(owner)
-		owner:AddCleanup("npcs", snake)
-	end
 	self:EmitSound("npc/barnacle/barnacle_tongue_pull1.wav", 70, 85)
 	SafeRemoveEntity(self)
 end
