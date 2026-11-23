@@ -1,52 +1,39 @@
 include("shared.lua")
 
--- The egg is the scaled watermelon model wearing a pale shell made from the melon's own texture.
--- Rather than shipping a copy of a HL2 texture in the addon, the shell is built on the client:
--- the game's texture is drawn into a render target over white, which washes it out the way the
--- old hand-made copy looked, and $color2 tints it purple.
+-- The snake's egg is the same form as the crawler's: the spawn-menu PHX cannonball, here a little
+-- larger and near-white. The shell is a plain material over vgui/white with the game's own cannon
+-- bump map for relief, tinted here rather than shipped as an image. Being a model material
+-- (VertexLitGeneric), map light and flashlights land on it on their own.
+--
+-- The cannonball's origin sits at the base of the ball, so the render bounds run up from it, matching
+-- the physics hull built in the same model space in init.lua.
 local HALF = ENT.EGG_HALF
-local TINT = Vector(150 / 255, 70 / 255, 200 / 255) -- purple
+local TINT = Vector(0.95, 0.96, 0.98) -- paper white, a touch cold
 
--- A new name, so a map that already built the untinted material does not hand that one back.
-local Shell = CreateMaterial("evil_snake_egg_shell_purple", "VertexLitGeneric", {
-	["$basetexture"] = "models/props_junk/fruit_objects01",
+local Shell = CreateMaterial("evil_snake_egg_shell_tinted", "VertexLitGeneric", {
+	["$basetexture"] = "vgui/white",
+	["$bumpmap"] = "phoenix_storms/cannon_bump",
 	["$model"] = 1,
 	["$halflambert"] = 1,
-	["$color2"] = ("[%f %f %f]"):format(TINT.x, TINT.y, TINT.z),
 })
 
--- The game's own texture, drawn only to make the shell.
-local SOURCE = CreateMaterial("evil_snake_egg_source", "UnlitGeneric", {
-	["$basetexture"] = "models/props_junk/fruit_objects01",
-})
-local built = false
-
--- Runs once, from a draw, so the render target is safe to push.
-local function BuildShell()
-	if built then return end
-	built = true
-	local size = 256
-	local rt = GetRenderTarget("evil_snake_egg_shell", size, size)
-	if not rt then return end
-	render.PushRenderTarget(rt)
-	render.Clear(255, 255, 255, 255, true, true)
-	cam.Start2D()
-	surface.SetDrawColor(255, 255, 255, 90)
-	surface.SetMaterial(SOURCE)
-	surface.DrawTexturedRect(0, 0, size, size)
-	cam.End2D()
-	render.PopRenderTarget()
-	Shell:SetTexture("$basetexture", rt)
+local tinted
+local function Tint()
+	local key = TINT.x * 65536 + TINT.y * 256 + TINT.z
+	if key == tinted then return end
+	tinted = key
+	Shell:SetVector("$color2", TINT)
 end
 
 function ENT:Initialize()
-	self:SetRenderBounds(-HALF * 1.1, HALF * 1.1)
+	self:SetRenderBounds(
+		Vector(-HALF.x * 1.1, -HALF.y * 1.1, -2),
+		Vector(HALF.x * 1.1, HALF.y * 1.1, HALF.z * 2.2)
+	)
 end
 
 function ENT:Draw()
-	-- Set again every frame, as the crawler's egg does: a tint set only once at load can be lost.
-	BuildShell()
-	Shell:SetVector("$color2", TINT)
+	Tint()
 	render.MaterialOverride(Shell)
 	self:DrawModel()
 	render.MaterialOverride()

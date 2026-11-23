@@ -1,5 +1,7 @@
--- The snake's egg: the crawler's egg, purple and half again as big. The HL2 watermelon at three
--- times its size, about 46 x 54 x 47. sv_eggs.lua in the snake keeps its own copy of the size for the nest checks.
+-- The snake's egg: the crawler's egg, white and half again as big. The spawn-menu PHX cannonball
+-- (models/props_phx/cannonball.mdl) at about 47 across, in a pale white shell. Its origin sits at the
+-- base, so cl_init.lua draws the shell against the physics hull in init.lua. sv_eggs.lua in the snake
+-- keeps its own copy of the size for the nest checks.
 ENT.Type = "anim"
 ENT.Base = "base_anim"
 ENT.PrintName = "Evil Snake Egg"
@@ -11,7 +13,7 @@ ENT.RenderGroup = RENDERGROUP_OPAQUE
 -- setting ent.NoDuplicate on the instance does nothing at all.
 ENT.DoNotDuplicate = true
 
-ENT.EGG_MODEL = "models/props_junk/watermelon01.mdl"
-ENT.EGG_SCALE = 3
-ENT.EGG_HALF = Vector(7.70, 8.96, 7.83) * ENT.EGG_SCALE -- the model's hull, scaled
+ENT.EGG_MODEL = "models/props_phx/cannonball.mdl"
+ENT.EGG_SCALE = 1.05
+ENT.EGG_HALF = Vector(22.4, 22.4, 22.4) * ENT.EGG_SCALE -- the model's visual half-size, scaled
 ENT.EGG_THICK = 48

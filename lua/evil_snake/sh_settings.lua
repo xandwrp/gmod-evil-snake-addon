@@ -55,7 +55,9 @@ EvilSnake.SETTINGS = {
 		help = "Always grips walls and ceilings, heads for the nearest wall whenever it wanders onto the floor and never drops off the ceiling on its own" },
 	{ name = "eggs", default = 0, min = 0, max = 1, label = "Eggs",
 		help = "It lays an egg after digesting someone, which hatches into another snake. At 0 it never lays" },
-	{ name = "egg_cap", default = 10, min = 0, max = 100, decimals = 0, label = "Population cap",
+	{ name = "egg_chance", default = 100, min = 0, max = 100, decimals = 0, label = "Egg chance (%)",
+		help = "Chance a snake gets the urge to lay an egg when it finishes digesting someone" },
+	{ name = "snake_cap", default = 10, min = 0, max = 100, decimals = 0, label = "Population cap",
 		help = "Most snakes and unhatched eggs there can be at once. At this count it stops laying, and "
 			.. "eggs that are already due wait unhatched until the count drops below it. At 0 there is no cap" },
 	{ name = "egg_time", default = 60, min = 1, max = 600, decimals = 0, label = "Egg gestation",
@@ -206,6 +208,6 @@ end
 
 -- Whether the population cap is reached or over. Always false at cap 0.
 function EvilSnake.AtCap()
-	local cap = EvilSnake.Setting("egg_cap")
+	local cap = EvilSnake.Setting("snake_cap")
 	return cap > 0 and EvilSnake.Population() >= cap
 end

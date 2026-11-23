@@ -532,8 +532,9 @@ function ENT:Absorb(v)
 	self:Toughen()
 	self:Steady()
 	self:Heal(self.Toughness * Setting("meal_heal"))
-	-- Someone fully digested: it carries an egg until it finds somewhere to lay it.
-	if Setting("eggs") ~= 0 then self.EggReady = true end
+	-- Someone fully digested: it carries an egg until it finds somewhere to lay it, if it gets
+	-- the urge this time. The chance is rolled per meal, so a snake can go several meals without one.
+	if Setting("eggs") ~= 0 and math.random() * 100 < Setting("egg_chance") then self.EggReady = true end
 	hook.Run("EvilSnakeAbsorbed", self, v, lessons)
 end
 

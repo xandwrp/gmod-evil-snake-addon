@@ -17,14 +17,15 @@ local function Eggs()
 end
 
 local EGG_THICK = 48     -- how thick the egg is; keep in step with ENT.EGG_THICK in evil_snake_egg/shared.lua
--- Half its reach across the surface. The scaled melon is nearly round (about 46 by 54), so both
--- axes are checked at the longer one rather than trusting which way the model's long side points.
-local EGG_LONG = 27
-local EGG_WIDE = 27
--- How far the egg's centre sits off the face it rests on: the scaled melon's half-height (23.49),
--- plus a hair so it does not start inside the brush. Walls and ceilings sink it in a little instead,
--- so a glued egg looks stuck on rather than hovering next to the surface.
-local EGG_REST = 23.8
+-- Half its reach across the surface. The scaled ball is about 47 across, so both axes are checked at
+-- the same half-width.
+local EGG_LONG = 23.5
+local EGG_WIDE = 23.5
+-- How far the egg's origin sits off the face it rests on. The model's origin is at the bottom of the
+-- ball, so a hair is all it takes: the ball then stands on the surface instead of sinking into it.
+-- Walls and ceilings sink it in a little instead, so a glued egg looks stuck on rather than hovering
+-- next to the surface.
+local EGG_REST = 0.6
 local EGG_SINK = 2.25
 local WALL_GAP = 0.5     -- how close it snugs up to a neighbouring wall
 local SUPPORT_REACH = 10 -- how far under its rim the surface may drop away before it counts as overhanging
@@ -382,7 +383,7 @@ end
 
 function ENT:LayAt(at, normal)
 	if Setting("eggs") <= 0 then return false end
-	local cap = Setting("egg_cap")
+	local cap = Setting("snake_cap")
 	if cap > 0 and EvilSnake.Population() + Eggs() >= cap then return false end
 	local ok, r = self:EggPlantable(at, normal)
 	if not ok then
@@ -401,7 +402,8 @@ function ENT:LayAt(at, normal)
 	-- cost a placed egg its collisions; SetCreator is all undo and cleanup ever needed.
 	local maker = self:GetCreator()
 	if IsValid(maker) then egg:SetCreator(maker) end
-	egg:Activate()
+	-- No Activate: on a scripted entity with a SetModelScale on it, Activate rebuilds the physics object
+	-- from the model, and the cannonball has no .phy to rebuild it from (see the egg's SpawnFunction).
 	self.EggReady = false
 	self.EggGoal = nil
 	self.NestMiss = 0
