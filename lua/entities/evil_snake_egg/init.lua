@@ -123,6 +123,16 @@ function ENT:SpawnFunction(ply, tr, class)
 	ent.SpawnNormal = normal
 	ent:Spawn()
 	ent:Activate()
+	-- Tied to whoever spawned it. SetCreator rather than SetOwner: SetOwner writes the engine's own
+	-- owner field (m_hOwnerEntity), which for a physics entity is the engine's business and is what
+	-- looked like it was costing the egg its collisions. SetCreator is the GMod notion of who made it,
+	-- which is all undo and cleanup need.
+	ent:SetCreator(ply)
+	ent.NoDuplicate = true
+	undo.Create("evil_snake_egg")
+	undo.AddEntity(ent)
+	undo.SetPlayer(ply)
+	ply:AddCleanup("props", ent)
 	return ent
 end
 
@@ -328,6 +338,13 @@ function ENT:Hatch()
 	snake.EggCoil = true
 	snake:Spawn()
 	snake:Activate()
+	-- The hatched snake belongs to whoever placed the egg, by creator: undoable and cleaned up with
+	-- their props, without touching the engine's owner field.
+	local maker = self:GetCreator()
+	if IsValid(maker) then
+		snake:SetCreator(maker)
+		maker:AddCleanup("npcs", snake)
+	end
 	self:EmitSound("npc/barnacle/barnacle_tongue_pull1.wav", 70, 85)
 	SafeRemoveEntity(self)
 end
